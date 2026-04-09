@@ -1,0 +1,57 @@
+[project]
+name = "noriacomm"
+version = "0.1.0"
+description = "Async-first Python SDK for SMS and WhatsApp messaging with Onfon and Meta Cloud API."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Noria Labs" }]
+license = "MIT"
+keywords = ["sms", "whatsapp", "messaging", "onfon", "meta", "httpx", "async"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Communications",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "httpx>=0.28.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.9",
+]
+
+[build-system]
+requires = ["setuptools>=82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["noriacomm*"]
+
+[tool.setuptools.package-data]
+noriacomm = ["py.typed"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+filterwarnings = ["error"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.uv]
+package = true

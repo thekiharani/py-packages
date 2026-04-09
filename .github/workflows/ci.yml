@@ -1,0 +1,321 @@
+name: CI
+
+on:
+  push:
+    branches: [main, release]
+  pull_request:
+    branches: [main, release]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect_changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      has_test_packages: ${{ steps.detect.outputs.has_test_packages }}
+      has_release_packages: ${{ steps.detect.outputs.has_release_packages }}
+      test_matrix: ${{ steps.detect.outputs.test_matrix }}
+      release_matrix: ${{ steps.detect.outputs.release_matrix }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed packages
+        id: detect
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+          import subprocess
+
+          packages = [
+              {"name": "noriacomm", "path": "noriacomm"},
+              {"name": "norialog", "path": "norialog"},
+              {"name": "noriapay", "path": "noriapay"},
+              {"name": "noriastore", "path": "noriastore"},
+          ]
+
+
+          def git_lines(*args: str) -> list[str]:
+              output = subprocess.check_output(["git", *args], text=True)
+              return [line for line in output.splitlines() if line]
+
+
+          def event_files() -> list[str]:
+              event_name = os.environ["GITHUB_EVENT_NAME"]
+              head = os.environ["GITHUB_SHA"]
+              before = os.environ.get("GITHUB_EVENT_BEFORE", "")
+              pr_base = os.environ.get("PR_BASE_SHA", "")
+              pr_head = os.environ.get("PR_HEAD_SHA", "")
+
+              if event_name == "pull_request" and pr_base and pr_head:
+                  return git_lines("diff", "--name-only", f"{pr_base}..{pr_head}", "--")
+
+              if before and set(before) != {"0"}:
+                  return git_lines("diff", "--name-only", f"{before}..{head}", "--")
+
+              try:
+                  return git_lines("diff", "--name-only", f"{head}^..{head}", "--")
+              except subprocess.CalledProcessError:
+                  return git_lines("ls-tree", "-r", "--name-only", head)
+
+
+          def latest_tag(prefix: str) -> str:
+              tags = git_lines("tag", "-l", f"{prefix}*", "--sort=-v:refname")
+              return tags[0] if tags else ""
+
+
+          changed_paths: set[str] = set()
+          for changed_file in event_files():
+              for package in packages:
+                  path = package["path"]
+                  if changed_file == path or changed_file.startswith(f"{path}/"):
+                      changed_paths.add(path)
+
+          test_matrix = [package for package in packages if package["path"] in changed_paths]
+
+          release_matrix = []
+          for package in packages:
+              prefix = f"{package['name']}-v"
+              tag = latest_tag(prefix)
+              if not tag:
+                  release_matrix.append(package)
+                  continue
+              diff = git_lines("diff", "--name-only", f"{tag}..HEAD", "--", package["path"])
+              if diff:
+                  release_matrix.append(package)
+
+          compact = {"separators": (",", ":")}
+          print(f"has_test_packages={'true' if test_matrix else 'false'}")
+          print(f"has_release_packages={'true' if release_matrix else 'false'}")
+          print(f"test_matrix={json.dumps(test_matrix, **compact)}")
+          print(f"release_matrix={json.dumps(release_matrix, **compact)}")
+          PY
+
+  test:
+    needs: detect_changes
+    if: needs.detect_changes.outputs.has_test_packages == 'true'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.detect_changes.outputs.test_matrix) }}
+        python: ["3.11", "3.12", "3.13", "3.14"]
+
+    name: ${{ matrix.package.name }} / Python ${{ matrix.python }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.package.path }}
+        run: uv sync --extra dev
+
+      - name: Run lint
+        working-directory: ${{ matrix.package.path }}
+        run: uv run ruff check .
+
+      - name: Run tests
+        working-directory: ${{ matrix.package.path }}
+        run: uv run pytest
+
+      - name: Build package
+        working-directory: ${{ matrix.package.path }}
+        run: uv build
+
+  verify:
+    needs: [detect_changes, test]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Verify workflow status
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ needs.detect_changes.result }}" != "success" ]; then
+            echo "Change detection failed."
+            exit 1
+          fi
+          if [ "${{ needs.test.result }}" != "success" ] && [ "${{ needs.test.result }}" != "skipped" ]; then
+            echo "Package CI failed."
+            exit 1
+          fi
+          echo "All required CI checks passed."
+
+  release:
+    needs: [detect_changes, verify]
+    if: github.ref == 'refs/heads/release' && needs.detect_changes.outputs.has_release_packages == 'true'
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.detect_changes.outputs.release_matrix) }}
+
+    name: Release ${{ matrix.package.name }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Determine release version
+        id: release
+        env:
+          PACKAGE_NAME: ${{ matrix.package.name }}
+          PACKAGE_PATH: ${{ matrix.package.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_VERSION=$(python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          path = Path(os.environ["PACKAGE_PATH"]) / "pyproject.toml"
+          content = path.read_text()
+          match = re.search(r'(?m)^version = "(.*)"$', content)
+          if match is None:
+              raise SystemExit(f"Unable to find version in {path}")
+          print(match.group(1))
+          PY
+          )
+
+          IFS='.' read -r MAJOR MINOR BASE_PATCH <<< "${BASE_VERSION}"
+          LINE_TAG_PREFIX="${PACKAGE_NAME}-v${MAJOR}.${MINOR}."
+
+          git fetch --force --tags origin
+
+          HEAD_LINE_TAG=$(git tag --points-at HEAD -l "${LINE_TAG_PREFIX}*" --sort=-v:refname | head -n 1)
+          if [ -n "${HEAD_LINE_TAG}" ]; then
+            echo "version=${HEAD_LINE_TAG#${PACKAGE_NAME}-v}" >> "$GITHUB_OUTPUT"
+            echo "tag_name=${HEAD_LINE_TAG}" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LATEST_LINE_TAG=$(git tag -l "${LINE_TAG_PREFIX}*" --sort=-v:refname | head -n 1)
+          if [ -z "${LATEST_LINE_TAG}" ]; then
+            NEW_PATCH="${BASE_PATCH}"
+          else
+            LATEST_PATCH="${LATEST_LINE_TAG##*.}"
+            if [ "${BASE_PATCH}" -gt "${LATEST_PATCH}" ]; then
+              NEW_PATCH="${BASE_PATCH}"
+            else
+              NEW_PATCH="$((LATEST_PATCH + 1))"
+            fi
+          fi
+
+          VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          TAG_NAME="${PACKAGE_NAME}-v${VERSION}"
+
+          if git rev-parse -q --verify "refs/tags/${TAG_NAME}^{commit}" >/dev/null; then
+            echo "Tag ${TAG_NAME} already exists on a different commit."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${TAG_NAME}"
+          git push origin "${TAG_NAME}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_NAME: ${{ matrix.package.name }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Release already exists for ${TAG_NAME}"
+          else
+            gh release create "${TAG_NAME}" --title "${PACKAGE_NAME} ${VERSION}" --generate-notes
+          fi
+
+      - name: Checkout release tag
+        env:
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          git checkout "${TAG_NAME}"
+
+      - name: Update build version
+        env:
+          PACKAGE_PATH: ${{ matrix.package.path }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          path = Path(os.environ["PACKAGE_PATH"]) / "pyproject.toml"
+          content = path.read_text()
+          version = os.environ["RELEASE_VERSION"]
+          updated = re.sub(
+              r'(?m)^version = ".*"$',
+              f'version = "{version}"',
+              content,
+              count=1,
+          )
+          if updated != content:
+              path.write_text(updated)
+          PY
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Build package
+        working-directory: ${{ matrix.package.path }}
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ${{ matrix.package.path }}/dist
+          skip-existing: true
