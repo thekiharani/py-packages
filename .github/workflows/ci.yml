@@ -130,6 +130,13 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
+        with:
+          working-directory: ${{ matrix.package.path }}
+          cache-dependency-glob: |
+            ${{ matrix.package.path }}/pyproject.toml
+            ${{ matrix.package.path }}/uv.lock
+            ${{ matrix.package.path }}/.python-version
+          cache-suffix: ${{ matrix.package.name }}-py${{ matrix.python }}
 
       - name: Install dependencies
         working-directory: ${{ matrix.package.path }}
@@ -309,6 +316,13 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
+        with:
+          working-directory: ${{ matrix.package.path }}
+          cache-dependency-glob: |
+            ${{ matrix.package.path }}/pyproject.toml
+            ${{ matrix.package.path }}/uv.lock
+            ${{ matrix.package.path }}/.python-version
+          cache-suffix: release-${{ matrix.package.name }}-py3.14
 
       - name: Build package
         working-directory: ${{ matrix.package.path }}
