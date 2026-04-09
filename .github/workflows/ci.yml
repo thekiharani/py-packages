@@ -141,9 +141,9 @@ jobs:
         with:
           working-directory: ${{ matrix.package.path }}
           cache-dependency-glob: |
-            ${{ matrix.package.path }}/pyproject.toml
-            ${{ matrix.package.path }}/uv.lock
-            ${{ matrix.package.path }}/.python-version
+            pyproject.toml
+            uv.lock
+            .python-version
           cache-suffix: ${{ matrix.package.name }}-py${{ matrix.python }}
 
       - name: Install dependencies
@@ -327,9 +327,9 @@ jobs:
         with:
           working-directory: ${{ matrix.package.path }}
           cache-dependency-glob: |
-            ${{ matrix.package.path }}/pyproject.toml
-            ${{ matrix.package.path }}/uv.lock
-            ${{ matrix.package.path }}/.python-version
+            pyproject.toml
+            uv.lock
+            .python-version
           cache-suffix: release-${{ matrix.package.name }}-py3.14
 
       - name: Build package
