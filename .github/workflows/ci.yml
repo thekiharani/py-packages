@@ -48,6 +48,10 @@ jobs:
               {"name": "noriapay", "path": "noriapay"},
               {"name": "noriastore", "path": "noriastore"},
           ]
+          shared_paths = {
+              ".github/CODEOWNERS",
+              ".github/workflows/ci.yml",
+          }
 
 
           def git_lines(*args: str) -> list[str]:
@@ -79,14 +83,18 @@ jobs:
               return tags[0] if tags else ""
 
 
-          changed_paths: set[str] = set()
-          for changed_file in event_files():
-              for package in packages:
-                  path = package["path"]
-                  if changed_file == path or changed_file.startswith(f"{path}/"):
-                      changed_paths.add(path)
+          changed_files = event_files()
+          if any(path in shared_paths for path in changed_files):
+              test_matrix = packages
+          else:
+              changed_paths: set[str] = set()
+              for changed_file in changed_files:
+                  for package in packages:
+                      path = package["path"]
+                      if changed_file == path or changed_file.startswith(f"{path}/"):
+                          changed_paths.add(path)
 
-          test_matrix = [package for package in packages if package["path"] in changed_paths]
+              test_matrix = [package for package in packages if package["path"] in changed_paths]
 
           release_matrix = []
           for package in packages:
