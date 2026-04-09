@@ -1,6 +1,6 @@
 [project]
 name = "noriapay"
-version = "0.1.0"
+version = "0.1.1"
 description = "Reusable Python SDK for M-PESA Daraja, SasaPay, and Paystack payments."
 readme = "README.md"
 requires-python = ">=3.11"
