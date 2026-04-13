@@ -5,6 +5,7 @@ Python package monorepo for Noria Labs.
 Published packages:
 
 - `noriacomm`: messaging SDK for SMS and WhatsApp provider integrations
+- `sendstack`: Sendstack SDK for email, SMS, and WhatsApp APIs
 - `norialog`: structured JSON logging for Python services
 - `noriapay`: payments SDK for M-PESA Daraja, SasaPay, and Paystack
 - `noriastore`: S3 and R2 storage client for Python services
@@ -13,6 +14,7 @@ Quick install examples:
 
 ```bash
 pip install noriacomm
+pip install sendstack
 pip install norialog
 pip install noriapay
 pip install noriastore
@@ -21,6 +23,7 @@ pip install noriastore
 Repo layout:
 
 - `noriacomm/`
+- `sendstack/`
 - `norialog/`
 - `noriapay/`
 - `noriastore/`

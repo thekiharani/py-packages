@@ -44,6 +44,7 @@ jobs:
 
           packages = [
               {"name": "noriacomm", "path": "noriacomm"},
+              {"name": "sendstack", "path": "sendstack"},
               {"name": "norialog", "path": "norialog"},
               {"name": "noriapay", "path": "noriapay"},
               {"name": "noriastore", "path": "noriastore"},
