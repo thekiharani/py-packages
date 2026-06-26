@@ -1,5 +1,5 @@
 [project]
-name = "send-kit"
+name = "noria-sendkit"
 version = "0.1.0"
 description = "Sync and async Python SDK for WhatsApp and bulk SMS gateways (Meta, Onfon, Africa's Talking)."
 readme = "README.md"

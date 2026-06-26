@@ -18,10 +18,10 @@ parsing — one definition, two execution models.
 ## Install
 
 ```bash
-pip install send-kit
+pip install noria-sendkit
 ```
 
-The distribution is published as `send-kit`; the import package is `sendkit`.
+The distribution is published as `noria-sendkit`; the import package is `sendkit`.
 
 ## Imports
 

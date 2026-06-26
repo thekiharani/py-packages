@@ -43,7 +43,7 @@ jobs:
           import subprocess
 
           packages = [
-              {"name": "send-kit", "path": "sendkit"},
+              {"name": "noria-sendkit", "path": "sendkit"},
               {"name": "sendstack", "path": "sendstack"},
               {"name": "norialog", "path": "norialog"},
               {"name": "noriapay", "path": "noriapay"},
