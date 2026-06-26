@@ -20,6 +20,12 @@ from .errors import (
     is_success_envelope,
     to_sendstack_error,
 )
+from .files import (
+    attachment_from_bytes,
+    attachment_from_file,
+    html_from_file,
+    text_from_file,
+)
 from .types import (
     DEFAULT_BASE_URL,
     BearerAuthStrategy,
@@ -77,6 +83,11 @@ __all__ = [
     "is_error_envelope",
     "is_success_envelope",
     "to_sendstack_error",
+    # Filesystem helpers
+    "html_from_file",
+    "text_from_file",
+    "attachment_from_file",
+    "attachment_from_bytes",
     # Auth
     "BearerAuthStrategy",
     "HeadersAuthStrategy",

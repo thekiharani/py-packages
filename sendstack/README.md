@@ -266,6 +266,45 @@ client.emails.send(
 )
 ```
 
+### Reading from files
+
+The API accepts strings (`html`/`text`) and base64 (`attachments`). These
+stdlib-only helpers do the read-and-encode step so you don't repeat it:
+
+```python
+from sendstack import (
+    Sendstack,
+    html_from_file,
+    text_from_file,
+    attachment_from_file,
+    attachment_from_bytes,
+)
+
+client.emails.send(
+    {
+        "from": "billing@example.com",
+        "to": "customer@example.com",
+        "subject": "Your invoice",
+        "html": html_from_file("templates/invoice.html"),
+        "text": text_from_file("templates/invoice.txt"),
+        "attachments": [
+            # From a path: filename defaults to the basename, content is base64-encoded.
+            attachment_from_file("invoices/2026-06.pdf", content_type="application/pdf"),
+            # From in-memory bytes (e.g. a generated PDF): filename is required.
+            attachment_from_bytes(generated_pdf, filename="summary.pdf", content_type="application/pdf"),
+        ],
+    }
+)
+```
+
+- `html_from_file(path, *, encoding="utf-8")` / `text_from_file(...)` — read a text
+  file into a string.
+- `attachment_from_file(path, *, filename=None, content_type=None, inline=None, content_id=None)`
+  — read a file into a base64 attachment `dict`. `filename` defaults to the basename.
+  `path` accepts a `str` or any `os.PathLike`.
+- `attachment_from_bytes(data, *, filename, content_type=None, inline=None, content_id=None)`
+  — encode in-memory `bytes`; `filename` is required.
+
 ## Domains
 
 ```python
@@ -482,6 +521,11 @@ Clients and errors:
 - `SendstackClient`, `AsyncSendstackClient` (aliases)
 - `SendstackError`
 - `DEFAULT_BASE_URL`
+
+Filesystem helpers:
+
+- `html_from_file`, `text_from_file`
+- `attachment_from_file`, `attachment_from_bytes`
 
 Auth, options, and machinery:
 
