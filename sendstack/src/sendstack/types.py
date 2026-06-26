@@ -1,13 +1,35 @@
+"""Public types for the SendStack SDK.
+
+This module holds two layers:
+
+1. Runtime machinery types - the request/response/retry contexts, auth
+   strategies, ``RetryOptions`` and ``RequestOptions`` - that the sync and
+   async clients pass around.
+2. API model types - ``Literal`` unions and ``TypedDict`` shapes for the
+   request/response payloads. They are optional typing aids: every method
+   accepts a plain ``dict`` and returns a plain ``dict``, but these give editors
+   named shapes and field hints for the API.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, TypeAlias
+from typing import Any, Literal, NotRequired, TypeAlias, TypedDict
 
 import httpx
 
-UNSET = object()
+# The live API host. Override via ``base_url`` when SendStack moves domains.
+DEFAULT_BASE_URL = "https://mailer.norialabs.com"
+
+# Sentinel distinguishing "no body" from an explicit ``None`` body.
+UNSET: Any = object()
+
+
+# --------------------------------------------------------------------------- #
+# Query parameter types
+# --------------------------------------------------------------------------- #
 
 QueryScalar: TypeAlias = str | int | float | bool | datetime
 QueryItem: TypeAlias = QueryScalar | None
@@ -15,8 +37,13 @@ QueryValue: TypeAlias = QueryItem | Sequence[QueryItem]
 QueryParams: TypeAlias = Mapping[str, QueryValue]
 
 
+# --------------------------------------------------------------------------- #
+# Request / response / retry contexts
+# --------------------------------------------------------------------------- #
+
+
 @dataclass(slots=True)
-class MailerRequestContext:
+class SendstackRequestContext:
     method: str
     path: str
     url: str
@@ -27,54 +54,74 @@ class MailerRequestContext:
 
 
 @dataclass(slots=True)
-class MailerResponseContext:
-    request: MailerRequestContext
+class SendstackResponseContext:
+    request: SendstackRequestContext
     response: httpx.Response
     payload: object
 
 
 @dataclass(slots=True)
-class MailerRetryContext:
-    request: MailerRequestContext
+class SendstackRetryContext:
+    request: SendstackRequestContext
     attempt: int
     response: httpx.Response | None = None
     error: object = None
 
 
-AuthValueProvider = Callable[
-    [MailerRequestContext],
-    str | Mapping[str, str] | Awaitable[str | Mapping[str, str]],
+# --------------------------------------------------------------------------- #
+# Callable hooks
+# --------------------------------------------------------------------------- #
+
+ResponseParser = Callable[
+    [httpx.Response, SendstackRequestContext], object | Awaitable[object]
 ]
-ResponseParser = Callable[[httpx.Response, MailerRequestContext], object | Awaitable[object]]
-ResponseTransformer = Callable[[MailerResponseContext], object | Awaitable[object]]
-RetryPredicate = Callable[[MailerRetryContext], bool | Awaitable[bool]]
-RetryDelay = Callable[[MailerRetryContext], float | int | Awaitable[float | int]]
+ResponseTransformer = Callable[[SendstackResponseContext], object | Awaitable[object]]
+RetryPredicate = Callable[[SendstackRetryContext], bool | Awaitable[bool]]
+RetryDelay = Callable[[SendstackRetryContext], float | int | Awaitable[float | int]]
 MiddlewareNext = Callable[
-    [MailerRequestContext],
-    MailerResponseContext | Awaitable[MailerResponseContext],
+    [SendstackRequestContext],
+    SendstackResponseContext | Awaitable[SendstackResponseContext],
 ]
-MailerMiddleware = Callable[
-    [MailerRequestContext, MiddlewareNext],
-    MailerResponseContext | Awaitable[MailerResponseContext],
+SendstackMiddleware = Callable[
+    [SendstackRequestContext, MiddlewareNext],
+    SendstackResponseContext | Awaitable[SendstackResponseContext],
 ]
+
+
+# --------------------------------------------------------------------------- #
+# Auth strategies
+# --------------------------------------------------------------------------- #
 
 
 @dataclass(slots=True)
 class BearerAuthStrategy:
-    token: str | Callable[[MailerRequestContext], str | Awaitable[str]]
+    """Send ``Authorization: Bearer <token>``.
+
+    ``token`` may be a string or a (sync or async) callable resolved per
+    request, which is the idiomatic way to plug in short-lived/rotating tokens.
+    """
+
+    token: str | Callable[[SendstackRequestContext], str | Awaitable[str]]
     header_name: str = "authorization"
     prefix: str = "Bearer"
 
 
 @dataclass(slots=True)
 class HeadersAuthStrategy:
+    """Send arbitrary auth headers, statically or resolved per request."""
+
     headers: Mapping[str, str] | Callable[
-        [MailerRequestContext],
+        [SendstackRequestContext],
         Mapping[str, str] | Awaitable[Mapping[str, str]],
     ]
 
 
-MailerAuthStrategy: TypeAlias = BearerAuthStrategy | HeadersAuthStrategy
+SendstackAuthStrategy: TypeAlias = BearerAuthStrategy | HeadersAuthStrategy
+
+
+# --------------------------------------------------------------------------- #
+# Retry + per-request options
+# --------------------------------------------------------------------------- #
 
 
 @dataclass(slots=True)
@@ -90,12 +137,228 @@ class RequestOptions:
     query: QueryParams | None = None
     timeout_seconds: float | None = None
     authenticated: bool | None = None
-    auth: MailerAuthStrategy | bool | None = None
+    auth: SendstackAuthStrategy | bool | None = None
     retry: RetryOptions | int | bool | None = None
-    middleware: Sequence[MailerMiddleware] | None = None
+    middleware: Sequence[SendstackMiddleware] | None = None
     parse_response: ResponseParser | None = None
     transform_response: ResponseTransformer | None = None
     unwrap_data: bool | None = None
     client: Any | None = None
     idempotency_key: str | None = None
     body: object = UNSET
+
+
+# --------------------------------------------------------------------------- #
+# API model types
+# --------------------------------------------------------------------------- #
+
+EmailStatus = Literal["queued", "sending", "sent", "failed", "canceled"]
+DomainRegion = Literal["af-south-1", "us-east-1", "eu-central-1"]
+DomainTlsPolicy = Literal["opportunistic", "enforced"]
+DomainCapability = Literal["enabled", "disabled"]
+SuppressionReason = Literal["bounce", "complaint", "manual"]
+KnownWebhookEvent = Literal[
+    "email.queued",
+    "email.sending",
+    "email.sent",
+    "email.failed",
+    "email.canceled",
+    "email.delivered",
+    "email.opened",
+    "email.clicked",
+    "email.bounced",
+    "email.complained",
+]
+WebhookEventType: TypeAlias = str
+
+# ``to``/``cc``/``bcc``/``reply_to`` accept a single address or a list.
+Recipient: TypeAlias = str | Sequence[str]
+
+
+class SendstackTag(TypedDict):
+    name: str
+    value: str
+
+
+class TemplateReference(TypedDict):
+    id: str
+    variables: NotRequired[Mapping[str, Any]]
+
+
+# ``from`` is a reserved word, so the email request must use functional syntax.
+SendEmailRequest = TypedDict(
+    "SendEmailRequest",
+    {
+        "from": str,
+        "to": Recipient,
+        "cc": Recipient,
+        "bcc": Recipient,
+        "reply_to": Recipient,
+        "subject": str,
+        "html": str,
+        "text": str,
+        "headers": Mapping[str, str],
+        "attachments": Sequence[Mapping[str, Any]],
+        "metadata": Mapping[str, str],
+        "tags": Sequence[SendstackTag],
+        "track_opens": bool,
+        "track_clicks": bool,
+        "provider_id": str,
+        "template_id": str,
+        "template_data": Mapping[str, Any],
+        "template": TemplateReference,
+        "scheduled_at": str | datetime,
+    },
+    total=False,
+)
+
+
+class SendEmailResult(TypedDict):
+    id: str
+    status: str
+
+
+class SendEmailBatchResult(TypedDict):
+    batch_id: str
+    data: list[SendEmailResult]
+
+
+EmailMessage = TypedDict(
+    "EmailMessage",
+    {
+        "id": str,
+        "status": str,
+        "from": str,
+        "to": list[str],
+        "cc": list[str],
+        "bcc": list[str],
+        "subject": str,
+        "batch_id": str | None,
+        "provider_id": str | None,
+        "provider_message_id": str | None,
+        "attempts": int,
+        "scheduled_at": str | None,
+        "sent_at": str | None,
+        "last_error": str | None,
+        "metadata": Mapping[str, Any],
+        "tags": list[SendstackTag],
+        "created_at": str,
+    },
+)
+
+
+class EmailEvent(TypedDict):
+    id: str
+    message_id: NotRequired[str | None]
+    type: str
+    occurred_at: NotRequired[str]
+
+
+class UploadAttachmentRequest(TypedDict):
+    filename: str
+    content_base64: NotRequired[str]
+    content_type: NotRequired[str]
+
+
+class UploadedAttachment(TypedDict):
+    attachment_id: str
+    sha256: str
+    size_bytes: int
+    filename: str
+    content_type: str | None
+
+
+class DomainCapabilities(TypedDict, total=False):
+    sending: DomainCapability
+    receiving: DomainCapability
+
+
+class CreateDomainRequest(TypedDict, total=False):
+    domain: str
+    name: str
+    provider_id: str
+    region: DomainRegion
+    tls: DomainTlsPolicy
+    capabilities: DomainCapabilities
+    custom_return_path: str
+
+
+class Domain(TypedDict):
+    id: str
+    tenantId: str
+    domain: str
+    status: str
+    createdAt: str
+
+
+class CreateTemplateRequest(TypedDict, total=False):
+    name: str
+    slug: str
+    subject: str
+    html: str
+    text: str
+
+
+class UpdateTemplateRequest(TypedDict, total=False):
+    subject: str
+    html: str | None
+    text: str | None
+
+
+class EmailTemplate(TypedDict):
+    id: str
+    tenantId: str
+    name: str
+    subject: str
+    htmlBody: str | None
+    textBody: str | None
+    createdAt: str
+
+
+class CreateWebhookEndpointRequest(TypedDict, total=False):
+    url: str
+    event_types: Sequence[WebhookEventType]
+
+
+class UpdateWebhookEndpointRequest(TypedDict, total=False):
+    url: str
+    event_types: Sequence[WebhookEventType]
+    enabled: bool
+
+
+class WebhookEndpoint(TypedDict):
+    id: str
+    tenantId: str
+    url: str
+    secret: str
+    eventTypes: list[str]
+    enabled: bool
+    createdAt: str
+
+
+class RetryWebhookEventResult(TypedDict):
+    id: str
+    webhook_status: str
+
+
+class CreateSuppressionRequest(TypedDict, total=False):
+    recipient: str
+    reason: SuppressionReason
+
+
+class CreateSuppressionResult(TypedDict):
+    recipient: str
+    reason: str
+
+
+class Suppression(TypedDict):
+    id: str
+    tenantId: str
+    recipient: str
+    reason: str
+    createdAt: str
+
+
+class CursorPage(TypedDict):
+    data: list[Any]
+    next_cursor: NotRequired[str | None]

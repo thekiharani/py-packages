@@ -1,13 +1,21 @@
 # `sendstack`
 
-Official Python SDK for Sendstack messaging APIs.
+Official Python SDK for the SendStack email SaaS API.
 
-`sendstack` is built on `httpx` and gives you sync and async clients for:
+Built on `httpx`, it ships both a synchronous client (`Sendstack`) and an
+asynchronous client (`AsyncSendstack`) covering the SendStack developer API.
 
-- developer API email, SMS, WhatsApp, and health endpoints
-- merchant/control-plane messaging routes, including group email
-- custom auth, retries, middleware, and injected `httpx` clients
-- raw `request(...)` access for endpoints not yet wrapped by a helper
+Use it for:
+
+- transactional and scheduled email
+- batch email
+- reusable attachment uploads
+- sending domains
+- email templates
+- webhook endpoints and webhook event retries
+- suppression lists
+
+Python `>=3.11` is required.
 
 ## Install
 
@@ -15,684 +23,492 @@ Official Python SDK for Sendstack messaging APIs.
 pip install sendstack
 ```
 
-Python requirement: `>=3.11`
-
 For local development:
 
 ```bash
 uv sync --extra dev
 ```
 
-## Shared Setup
-
-The examples below assume:
-
-```python
-BASE_URL = "https://sendstack.noria.co.ke/api/v1"
-API_KEY = "sk_live_example_secret"
-MERCHANT_TOKEN = "control-plane-token"
-MERCHANT_ID = "merchant_123"
-```
-
-Change `BASE_URL` once if your Sendstack host changes.
-
 ## Quick Start
 
-### Developer API
+### Sync
 
 ```python
-from sendstack import Mailer, RequestOptions
+import os
 
-client = Mailer(
-    API_KEY,
-    base_url=BASE_URL,
-)
+from sendstack import Sendstack, RequestOptions
 
-email_message = client.emails.send(
+token = os.environ["SENDSTACK_TOKEN"]
+
+client = Sendstack(token)
+
+message = client.emails.send(
     {
-        "from": "Noria Demo <mail@noria.co.ke>",
-        "to": ["hello@example.com"],
-        "reply_to": ["support@noria.co.ke", "ops@noria.co.ke"],
-        "subject": "Hello from Sendstack",
-        "html": "<p>Your <strong>SDK</strong> is working.</p>",
-        "text": "Your SDK is working.",
+        "from": "Noria <hello@example.com>",
+        "to": "friend@example.com",
+        "subject": "Hello from SendStack",
+        "html": "<p>Your email pipeline is working.</p>",
+        "text": "Your email pipeline is working.",
     },
     RequestOptions(idempotency_key="welcome-email-1"),
 )
 
-sms_quote = client.sms.quote(
-    {
-        "from": "SENDSTACK",
-        "to": "+254722111222",
-        "text": "Hello from SMS",
-    }
-)
-
-whatsapp_message = client.whatsapp.send(
-    {
-        "from": "WABA",
-        "to": "+254733000333",
-        "text": "Hello from WhatsApp",
-    }
-)
-
-print(email_message["id"], email_message["status"])
-print(sms_quote["estimated_units"])
-print(whatsapp_message["id"], whatsapp_message["status"])
+print(message["id"], message["status"])
 ```
 
-### Merchant API
+`Sendstack` opens an `httpx.Client` for you. Close it when you are done, or use
+it as a context manager:
 
 ```python
-from sendstack import BearerAuthStrategy, Mailer, RequestOptions
-
-merchant_client = Mailer(
-    base_url=BASE_URL,
-    auth=BearerAuthStrategy(token=MERCHANT_TOKEN),
-)
-
-group_quote = merchant_client.merchant.emails.quote_group(
-    MERCHANT_ID,
-    {
-        "from": "sender@example.com",
-        "to": ["a@example.com", "b@example.com"],
-        "cc": "finance@example.com",
-        "subject": "Monthly update",
-        "html": "<p>Hello from the control plane</p>",
-        "text": "Hello from the control plane",
-    },
-)
-
-group_send = merchant_client.merchant.emails.send_group(
-    MERCHANT_ID,
-    {
-        "from": "sender@example.com",
-        "to": ["a@example.com", "b@example.com"],
-        "reply_to": ["support@example.com", "ops@example.com"],
-        "subject": "Monthly update",
-        "html": "<p>Queued from the control plane</p>",
-        "text": "Queued from the control plane",
-    },
-    RequestOptions(idempotency_key="merchant-group-send-1"),
-)
-
-print(group_quote["estimated_units"])
-print(group_send["recipient_count"])
+with Sendstack(token) as client:
+    client.emails.send({"from": "hello@example.com", "to": "friend@example.com", "text": "Hi"})
 ```
 
 ### Async
 
 ```python
 import asyncio
+import os
 
-from sendstack import AsyncMailer, RequestOptions
+from sendstack import AsyncSendstack, RequestOptions
 
 
 async def main() -> None:
-    async with AsyncMailer(
-        API_KEY,
-        base_url=BASE_URL,
-    ) as client:
-        email_message = await client.emails.send(
+    async with AsyncSendstack(os.environ["SENDSTACK_TOKEN"]) as client:
+        message = await client.emails.send(
             {
-                "from": "Noria Demo <mail@noria.co.ke>",
-                "to": ["hello@example.com"],
-                "subject": "Hello",
-                "html": "<p>World</p>",
-                "text": "World",
+                "from": "Noria <hello@example.com>",
+                "to": "friend@example.com",
+                "subject": "Hello from SendStack",
+                "text": "Your async pipeline is working.",
             },
-            RequestOptions(idempotency_key="async-email-1"),
+            RequestOptions(idempotency_key="welcome-email-1"),
         )
-        print(email_message["id"])
+        print(message["id"], message["status"])
 
 
 asyncio.run(main())
 ```
 
-## How To Read The Examples
+Every example below works on both clients. On `Sendstack` a method returns the
+decoded payload; on `AsyncSendstack` the same call returns a coroutine you
+`await`.
 
-- `client`
-  The main Sendstack SDK client you use to call the API.
-- `client.emails`
-  The email part of the API.
-- `client.sms`
-  The SMS part of the API.
-- `client.whatsapp`
-  The WhatsApp part of the API.
-- `client.merchant`
-  Merchant and control-plane routes on a Sendstack client.
-- `quote(...)`
-  Ask Sendstack for the estimated units before you send a message.
-- `send(...)`
-  Queue a message for delivery.
-- `get(...)`
-  Fetch one message by its ID.
-- `list(...)`
-  Fetch many messages, usually with filters or pagination.
-- `health`
-  Endpoints that tell you whether the Sendstack service is up.
-- variables like `email_message`, `sms_quote`, and `group_send`
-  These are just local Python variable names holding API responses.
+### Base URL
 
-## Choose A Client
+The SDK defaults to `https://mailer.norialabs.com`, matching the current live
+API. Override it when you move to the SendStack domain:
 
-- `Mailer`
-  Sync client backed by `httpx.Client`
-- `AsyncMailer`
-  Async client backed by `httpx.AsyncClient`
+```python
+client = Sendstack(token, base_url="https://sendstack.norialabs.com")
+```
 
-Use `AsyncMailer` when your app already runs async code. Use `Mailer` when you need synchronous calls.
+## Docs Split
+
+This README is the package guide: install, initialization, SDK methods, request
+options, errors, and examples.
+
+The SaaS docs remain the canonical source for product/API behavior: account
+setup, API tokens, domain verification, DNS records, webhook event catalogs,
+deliverability concepts, provider behavior, dashboard workflows, and the raw
+HTTP API reference. Current live SaaS docs are at
+`https://mailer.norialabs.com/api/docs`.
 
 ## Auth
 
-### Developer API Auth
-
-When you pass a non-empty `api_key`, `sendstack` sends:
+The API uses bearer auth:
 
 ```http
-X-API-Key: <api_key>
+Authorization: Bearer <token>
 ```
 
-That matches the current Sendstack developer API.
+Passing a token as the first argument configures that header automatically:
 
 ```python
-from sendstack import Mailer
-
-client = Mailer(
-    API_KEY,
-    base_url=BASE_URL,
-)
+client = Sendstack("mlr_live_...")
 ```
 
-### Merchant And Control-Plane Auth
-
-Merchant routes usually need a custom auth strategy instead of an API key.
+You can also pass a custom auth strategy. Tokens may be static or resolved per
+request (sync or async callables both work):
 
 ```python
-from sendstack import BearerAuthStrategy, Mailer
+from sendstack import BearerAuthStrategy, Sendstack
 
-merchant_client = Mailer(
-    base_url=BASE_URL,
-    auth=BearerAuthStrategy(token=MERCHANT_TOKEN),
+client = Sendstack(
+    base_url="https://mailer.norialabs.com",
+    auth=BearerAuthStrategy(token=lambda context: get_fresh_token()),
 )
 ```
 
-You can also use `HeadersAuthStrategy` when the target environment expects custom headers.
-If you are not using API-key auth, you can omit `api_key` entirely.
+Use `HeadersAuthStrategy` when the target environment expects custom headers,
+and `RequestOptions(authenticated=False)` to strip auth for a single call.
 
-### Per-Request Overrides
+## Method Reference
 
-All helpers and raw requests accept `RequestOptions`. That lets you override auth, headers, timeout, retry, and the `httpx` client for a single call.
+| SDK method | HTTP route | Returns |
+| --- | --- | --- |
+| `attachments.upload(payload, options=None)` | `POST /attachments` | `UploadedAttachment` |
+| `emails.send(payload, options=None)` | `POST /emails` | `SendEmailResult` |
+| `emails.send_batch(payload, options=None)` | `POST /emails/batch` | `SendEmailBatchResult` |
+| `emails.list(options=None, *, limit=None, cursor=None, status=None)` | `GET /emails` | `CursorPage` |
+| `emails.get(message_id, options=None)` | `GET /emails/{id}` | `EmailMessage` |
+| `emails.events(message_id, options=None)` | `GET /emails/{id}/events` | `CursorPage` |
+| `emails.cancel(message_id, options=None)` | `POST /emails/{id}/cancel` | `EmailMessage` |
+| `emails.requeue(message_id, options=None)` | `POST /emails/{id}/requeue` | `EmailMessage` |
+| `domains.create(payload, options=None)` | `POST /domains` | `Domain` |
+| `domains.list(options=None)` | `GET /domains` | `CursorPage` |
+| `domains.get(domain_id, options=None)` | `GET /domains/{id}` | `Domain` |
+| `domains.verify(domain_id, options=None)` | `POST /domains/{id}/verify` | `Domain` |
+| `templates.create(payload, options=None)` | `POST /templates` | `EmailTemplate` |
+| `templates.list(options=None)` | `GET /templates` | `CursorPage` |
+| `templates.get(template_id, options=None)` | `GET /templates/{id}` | `EmailTemplate` |
+| `templates.update(template_id, payload, options=None)` | `PATCH /templates/{id}` | `EmailTemplate` |
+| `templates.remove(template_id, options=None)` | `DELETE /templates/{id}` | `None` |
+| `webhooks.create(payload, options=None)` | `POST /webhook-endpoints` | `WebhookEndpoint` |
+| `webhooks.list(options=None)` | `GET /webhook-endpoints` | `CursorPage` |
+| `webhooks.update(webhook_id, payload, options=None)` | `PATCH /webhook-endpoints/{id}` | `WebhookEndpoint` |
+| `webhooks.remove(webhook_id, options=None)` | `DELETE /webhook-endpoints/{id}` | `None` |
+| `webhook_events.retry(event_id, options=None)` | `POST /events/{id}/retry` | `RetryWebhookEventResult` |
+| `suppressions.add(payload, options=None)` | `POST /suppressions` | `CreateSuppressionResult` |
+| `suppressions.list(options=None)` | `GET /suppressions` | `CursorPage` |
+| `suppressions.remove(recipient, options=None)` | `DELETE /suppressions/{recipient}` | `None` |
 
-## Developer API
+`webhook_events` is also available as `webhookEvents`, and `emails.send_batch`
+as `emails.sendBatch`, as convenience camelCase aliases.
 
-### Emails
+Methods take a plain `dict` payload and return plain `dict` responses (the
+`{"ok": true, "data": ...}` envelope is unwrapped for you). The exported model
+types — `EmailMessage`, `Domain`, `WebhookEndpoint`, and friends — are optional
+typing aids you can annotate with.
 
-Available methods:
-
-- `client.emails.quote(payload, options=None)`
-- `client.emails.send(payload, options=None)`
-- `client.emails.get(email_id, options=None)`
-- `client.emails.list(options=None, *, limit=None, cursor=None, per_page=None, status=None)`
-
-Example:
-
-```python
-quote = client.emails.quote(
-    {
-        "from": "sender@example.com",
-        "to": ["recipient@example.com"],
-        "subject": "Welcome",
-        "html": "<p>Hello from Sendstack</p>",
-        "text": "Hello from Sendstack",
-    }
-)
-
-email_message = client.emails.send(
-    {
-        "from": "sender@example.com",
-        "to": ["recipient@example.com"],
-        "reply_to": ["support@example.com", "help@example.com"],
-        "subject": "Welcome",
-        "html": "<p>Hello from Sendstack</p>",
-        "text": "Hello from Sendstack",
-    }
-)
-
-listing = client.emails.list(limit=10, status="queued")
-```
-
-Email content rules:
-
-- provide at least one of `html`, `text`, or `attachments`
-- `html` is optional
-- `text` is optional
-- using both `html` and `text` is usually the best default
-- the single-email route still requires exactly one `to` recipient
-- `to`, `cc`, `bcc`, and `reply_to` may be passed as a string or a list
-
-### SMS
-
-Available methods:
-
-- `client.sms.quote(payload, options=None)`
-- `client.sms.send(payload, options=None)`
-- `client.sms.get(message_id, options=None)`
-- `client.sms.list(options=None, *, limit=None, cursor=None, per_page=None, status=None)`
-
-Example:
+## Emails
 
 ```python
-quote = client.sms.quote(
+client.emails.send(
     {
-        "from": "SENDSTACK",
-        "to": "+254722111222",
-        "text": "Hello from SMS",
-    }
-)
-
-sms_message = client.sms.send(
-    {
-        "from": "SENDSTACK",
-        "to": "+254722111222",
-        "text": "Queued SMS",
-    }
-)
-```
-
-### WhatsApp
-
-Available methods:
-
-- `client.whatsapp.quote(payload, options=None)`
-- `client.whatsapp.send(payload, options=None)`
-- `client.whatsapp.get(message_id, options=None)`
-- `client.whatsapp.list(options=None, *, limit=None, cursor=None, per_page=None, status=None)`
-
-Example:
-
-```python
-quote = client.whatsapp.quote(
-    {
-        "from": "WABA",
-        "to": "+254733000333",
-        "text": "Hello from WhatsApp",
-    }
-)
-
-whatsapp_message = client.whatsapp.send(
-    {
-        "from": "WABA",
-        "to": "+254733000333",
-        "text": "Queued WhatsApp",
-    }
-)
-```
-
-Template send example:
-
-```python
-whatsapp_message = client.whatsapp.send(
-    {
-        "from": "WABA",
-        "to": "+254733000333",
-        "template_id": "11111111-1111-1111-1111-111111111111",
-        "template_variables": {"first_name": "Mercy"},
-    }
-)
-```
-
-WhatsApp rules:
-
-- send plain text with `text`
-- send a template message with `template_id`
-- use `template_variables` only with template sends
-- the SDK accepts `template_variables` and normalizes it to the API field `variables`
-
-### Health
-
-Available methods:
-
-- `client.health.live(options=None)`
-- `client.health.check(options=None)`
-- `client.health.ready(options=None)`
-
-These helpers target Sendstack's root-scoped `/livez`, `/healthz`, and `/readyz` endpoints even when your `base_url` ends in `/api/v1`.
-
-## Merchant API
-
-### Messages
-
-Available methods:
-
-- `client.merchant.messages.list(merchant_id, options=None, *, limit=None, cursor=None, per_page=None, channel=None, status=None)`
-- `client.merchant.messages.get(merchant_id, message_id, options=None)`
-
-Example:
-
-```python
-messages = merchant_client.merchant.messages.list(
-    MERCHANT_ID,
-    limit=20,
-    channel="email",
-    status="queued",
-)
-```
-
-### Merchant Email
-
-Available methods:
-
-- `client.merchant.emails.quote(merchant_id, payload, options=None)`
-- `client.merchant.emails.send(merchant_id, payload, options=None)`
-- `client.merchant.emails.quote_group(merchant_id, payload, options=None)`
-- `client.merchant.emails.send_group(merchant_id, payload, options=None)`
-
-Compatibility aliases:
-
-- `client.merchant.emails.quoteGroup(...)`
-- `client.merchant.emails.sendGroup(...)`
-
-Group email example:
-
-```python
-group_send = merchant_client.merchant.emails.send_group(
-    MERCHANT_ID,
-    {
-        "from": "sender@example.com",
+        "from": "hello@example.com",
         "to": ["a@example.com", "b@example.com"],
-        "cc": "finance@example.com",
-        "reply_to": ["support@example.com", "ops@example.com"],
-        "subject": "Monthly update",
-        "html": "<p>Queued group email</p>",
-        "text": "Queued group email",
-    },
-    RequestOptions(idempotency_key="merchant-group-email-1"),
+        "reply_to": "support@example.com",
+        "subject": "Welcome",
+        "html": "<p>Hello</p>",
+        "text": "Hello",
+        "tags": [{"name": "campaign", "value": "welcome"}],
+        "metadata": {"account": "acct_123"},
+        "track_opens": True,
+        "track_clicks": True,
+    }
 )
 ```
 
-Merchant group email rules:
+`to`, `cc`, `bcc`, and `reply_to` accept a single address or a list.
 
-- `to` may be a string or a list
-- the backend deduplicates recipients across `to`, `cc`, and `bcc`
-- use merchant group email for current Sendstack multi-recipient email sends
+Batch sends accept either a list or `{"emails": [...]}`:
 
-### Merchant SMS
+```python
+client.emails.send_batch(
+    [
+        {"from": "hello@example.com", "to": "a@example.com", "subject": "One", "text": "First"},
+        {"from": "hello@example.com", "to": "b@example.com", "subject": "Two", "text": "Second"},
+    ]
+)
+```
 
-Available methods:
+List, fetch, inspect events, then cancel or requeue:
 
-- `client.merchant.sms.quote(merchant_id, payload, options=None)`
-- `client.merchant.sms.send(merchant_id, payload, options=None)`
+```python
+page = client.emails.list(limit=25, status="queued")
+message = client.emails.get("msg_123")
+events = client.emails.events("msg_123")
+client.emails.cancel("msg_123")
+client.emails.requeue("msg_123")
+```
 
-### Merchant WhatsApp
+### Scheduled email
 
-Available methods:
+`scheduled_at` accepts an ISO-8601 string or a `datetime` (serialized to
+ISO-8601 with a `Z` suffix):
 
-- `client.merchant.whatsapp.quote(merchant_id, payload, options=None)`
-- `client.merchant.whatsapp.send(merchant_id, payload, options=None)`
+```python
+from datetime import datetime, timezone
 
-## Pagination And Idempotency
+client.emails.send(
+    {
+        "from": "hello@example.com",
+        "to": "friend@example.com",
+        "subject": "Later",
+        "text": "Scheduled.",
+        "scheduled_at": datetime(2026, 3, 28, 9, 0, tzinfo=timezone.utc),
+    }
+)
+```
 
-List helpers support:
+## Attachments
 
-- `cursor`
-- `limit`
-- `per_page`
-  Alias for `limit`
+```python
+attachment = client.attachments.upload(
+    {
+        "filename": "invoice.pdf",
+        "content_base64": invoice_pdf_base64,
+        "content_type": "application/pdf",
+    }
+)
 
-Sendstack list responses are returned unchanged and currently use:
+client.emails.send(
+    {
+        "from": "billing@example.com",
+        "to": "customer@example.com",
+        "subject": "Invoice",
+        "text": "Attached.",
+        "attachments": [
+            {"filename": "invoice.pdf", "attachment_id": attachment["attachment_id"]},
+        ],
+    }
+)
+```
 
-- `items`
-- `next_cursor`
-- `has_more`
-- `limit`
+## Domains
 
-Use `RequestOptions(idempotency_key="...")` on send requests when you want Sendstack idempotency protection.
+```python
+domain = client.domains.create(
+    {
+        "domain": "example.com",
+        "region": "af-south-1",
+        "tls": "enforced",
+        "capabilities": {"sending": "enabled"},
+    }
+)
+
+client.domains.verify(domain["id"])
+```
+
+## Templates
+
+```python
+template = client.templates.create(
+    {
+        "name": "Welcome",
+        "slug": "welcome",
+        "subject": "Welcome, {{firstName}}",
+        "html": "<p>Hello {{firstName}}</p>",
+        "text": "Hello {{firstName}}",
+    }
+)
+
+client.emails.send(
+    {
+        "from": "hello@example.com",
+        "to": "friend@example.com",
+        "template": {"id": template["id"], "variables": {"firstName": "Amina"}},
+    }
+)
+```
+
+## Webhooks
+
+```python
+endpoint = client.webhooks.create(
+    {
+        "url": "https://example.com/webhooks/sendstack",
+        "event_types": ["email.sent", "email.failed"],
+    }
+)
+
+client.webhook_events.retry("event_123")
+client.webhooks.update(endpoint["id"], {"enabled": False})
+```
+
+## Suppressions
+
+```python
+client.suppressions.add({"recipient": "bad@example.com", "reason": "manual"})
+
+suppressions = client.suppressions.list()
+client.suppressions.remove("bad@example.com")
+```
+
+## Field Aliases
+
+Python users write idiomatic snake_case, which is exactly the wire format for
+email, attachment, webhook, and domain fields — `reply_to`, `track_opens`,
+`track_clicks`, `provider_id`, `template_id`, `template_data`, `scheduled_at`,
+`content_base64`, `content_type`, `attachment_id`, `content_id`, `event_types`,
+`custom_return_path`. No translation needed.
+
+The camelCase aliases (`replyTo`, `trackOpens`,
+`trackClicks`, `providerId`, `templateId`, `templateData`, `scheduledAt`,
+`contentBase64`, `attachmentId`, `eventTypes`, …) are also accepted and
+converted to the wire field names. Everything else is passed through unchanged,
+so the SDK stays forward-compatible with new API fields.
 
 ## Request Options
 
-All helpers and raw requests accept `RequestOptions`.
+All methods accept a `RequestOptions`. Mutating methods also honor
+`idempotency_key`.
 
 ```python
 from sendstack import RequestOptions
 
-message = client.emails.send(
+client.emails.send(
     {
-        "from": "sender@example.com",
-        "to": "hello@example.com",
+        "from": "hello@example.com",
+        "to": "friend@example.com",
         "subject": "Hello",
-        "html": "<p>Hello</p>",
         "text": "Hello",
-        "scheduled_at": "2026-03-28T09:00:00.000Z",
     },
     RequestOptions(
-        headers={"x-tenant-id": "tenant_123"},
+        idempotency_key="email-123",
         timeout_seconds=10.0,
-        idempotency_key="tenant-123-send-1",
+        query={"debug": True},
+        headers={"x-tenant-id": "tenant_123"},
     ),
 )
 ```
 
 Supported options:
 
-- `headers`
-- `query`
-- `timeout_seconds`
-- `authenticated`
-- `auth`
-- `retry`
-- `middleware`
-- `parse_response`
-- `transform_response`
-- `unwrap_data`
-- `client`
-- `idempotency_key`
-- `body`
+- `headers`: extra headers (merged over constructor headers)
+- `query`: per-request query params (merged over constructor query)
+- `timeout_seconds`: request timeout, default `30.0`
+- `authenticated`: set `False` to strip auth headers for a request
+- `auth`: a `BearerAuthStrategy` / `HeadersAuthStrategy`, or `False`
+- `retry`: a `RetryOptions`, an attempt count, or `False`
+- `middleware`: request/response middleware (runs after constructor middleware)
+- `parse_response`: custom response parser
+- `transform_response`: custom response transformer
+- `unwrap_data`: unwrap `{"ok": true, "data": ...}` envelopes, default `True`
+- `client`: a per-request `httpx` client
+- `idempotency_key`: sets the `Idempotency-Key` header
+- `body`: raw body for `request(...)`
 
-Merge rules:
+## Retries
 
-- request headers merge over constructor headers
-- request query params merge over constructor query params
-- request middleware runs after constructor middleware
-- request-level `client`, `timeout_seconds`, `auth`, `retry`, `parse_response`, and `transform_response` replace constructor values
-
-## Customization
-
-### Custom `httpx` Clients
-
-You can inject your own `httpx.Client` or `httpx.AsyncClient`:
-
-```python
-import httpx
-
-from sendstack import Mailer
-
-http_client = httpx.Client(timeout=5.0)
-
-client = Mailer(
-    API_KEY,
-    base_url=BASE_URL,
-    client=http_client,
-)
-```
-
-If you inject your own client, `sendstack` will use it but will not close it for you.
-
-### Retry
+Retries are off by default (a single attempt). Enable them per request or on the
+client:
 
 ```python
 from sendstack import RequestOptions, RetryOptions
 
-result = client.emails.list(
-    RequestOptions(
-        retry=RetryOptions(
-            max_attempts=2,
-            delay_seconds=0,
-        )
-    )
+client.emails.list(
+    RequestOptions(retry=RetryOptions(max_attempts=3, delay_seconds=0.5))
 )
+
+# Or just an attempt count:
+client.emails.list(RequestOptions(retry=3))
 ```
 
 Default retry behavior:
 
-- retries network exceptions by default unless they are already `MailerError`
+- retries network exceptions, unless they are already a `SendstackError`
 - retries responses only for `408`, `425`, `429`, `500`, `502`, `503`, `504`
-- uses a short exponential backoff when you enable retries without a custom delay
+- uses a short exponential backoff when no custom `delay_seconds` is given
 
-### Middleware
+`RetryOptions` accepts `delay_seconds` and `should_retry` as values or callables
+(sync or async).
+
+## Custom `httpx` Clients
+
+Inject your own `httpx.Client` or `httpx.AsyncClient`:
 
 ```python
-from sendstack import Mailer
+import httpx
+
+from sendstack import Sendstack
+
+client = Sendstack("mlr_live_...", client=httpx.Client(timeout=5.0))
+```
+
+If you inject a client, the SDK uses it but does not close it for you.
+
+## Middleware
+
+```python
+from sendstack import Sendstack
 
 
 def add_sdk_header(context, next_call):
-    context.headers["x-sdk"] = "sendstack"
+    context.headers["x-sdk"] = "sendstack-python"
     return next_call(context)
 
 
-client = Mailer(
-    API_KEY,
-    base_url=BASE_URL,
-    middleware=[add_sdk_header],
-)
+client = Sendstack("mlr_live_...", middleware=[add_sdk_header])
 ```
 
-Middleware can:
+Middleware can mutate headers, rewrite the final URL, or short-circuit a request
+by returning a response context without calling `next_call`.
 
-- mutate headers
-- rewrite the final URL
-- short-circuit a request by returning a response without calling `next`
+## Lower-Level Request
 
-### Raw Requests
-
-Use `request(...)` when you want direct access to an endpoint that does not yet have a helper:
+Every resource method uses `request(...)` internally. Use it directly for new
+API routes before the SDK grows a typed wrapper:
 
 ```python
 from sendstack import RequestOptions
 
-result = client.request(
-    "POST",
-    "/reports/export",
-    RequestOptions(
-        body={"format": "csv"},
-        headers={"x-request-id": "req_123"},
-    ),
-)
+result = client.request("GET", "/emails", RequestOptions(query={"limit": 25, "status": "queued"}))
 ```
 
-### Custom Response Parsing
-
-By default:
-
-- successful `{ok: true, data: ...}` responses are unwrapped to `data`
-- plain JSON responses are returned unchanged
-- non-2xx responses raise `MailerError`
-
-You can customize parsing and transformation:
-
-```python
-result = client.request(
-    "GET",
-    "/metrics",
-    RequestOptions(
-        parse_response=lambda response, _context: response.headers.get("x-total"),
-        transform_response=lambda context: {
-            "total": int(context.payload),
-            "status": context.response.status_code,
-        },
-    ),
-)
-```
-
-Use `RequestOptions(unwrap_data=False)` if you need the raw `{ok, data}` envelope.
+Pass `RequestOptions(unwrap_data=False)` if you need the raw `{"ok", "data"}`
+envelope.
 
 ## Errors
 
-`sendstack` raises `MailerError` for API-level failures.
+Failed responses raise `SendstackError`.
 
-It understands both:
+```python
+from sendstack import SendstackError
 
-- Sendstack-style FastAPI errors such as `{"detail": "..."}`
-- older mailer-style error envelopes such as `{ok: false, error: {...}}`
+try:
+    client.emails.send({"from": "hello@example.com", "to": "bad", "subject": "Hi", "text": "Hi"})
+except SendstackError as error:
+    print(error.status_code, error.code, error.message, error.details)
+```
 
-Useful fields on `MailerError`:
+`SendstackError` includes:
 
 - `status_code`
 - `code`
 - `details`
 - `response_body`
+- `message`
 
-Example:
+It understands SendStack envelopes (`{"ok": false, "error": {...}}`) as well as
+FastAPI-style `{"detail": "..."}` bodies.
 
-```python
-from sendstack import MailerError
+## Exports
 
-try:
-    client.emails.send(...)
-except MailerError as error:
-    print(error.status_code)
-    print(error.code)
-    print(error.details)
-```
+Clients and errors:
 
-## Python-Friendly Field Aliases
+- `Sendstack`, `AsyncSendstack`
+- `SendstackClient`, `AsyncSendstackClient` (aliases)
+- `SendstackError`
+- `DEFAULT_BASE_URL`
 
-The SDK keeps wire payloads API-shaped, but it accepts these Python aliases:
+Auth, options, and machinery:
 
-- `reply_to -> replyTo`
-- `scheduled_at -> scheduledAt`
-- `configuration_set_name -> configurationSetName`
-- `tenant_name -> tenantName`
-- `endpoint_id -> endpointId`
-- `feedback_forwarding_email_address -> feedbackForwardingEmailAddress`
-- `feedback_forwarding_email_address_identity_arn -> feedbackForwardingEmailAddressIdentityArn`
-- `from_email_address_identity_arn -> fromEmailAddressIdentityArn`
-- `list_management_options -> listManagementOptions`
-- `contact_list_name -> contactListName`
-- `topic_name -> topicName`
-- `content_type -> contentType`
-- `content_id -> contentId`
-- `content_disposition -> disposition`
-- `template_variables -> variables`
-- `expires_at -> expiresAt`
+- `BearerAuthStrategy`, `HeadersAuthStrategy`, `SendstackAuthStrategy`
+- `RequestOptions`, `RetryOptions`
+- `SendstackMiddleware`, `ResponseParser`, `ResponseTransformer`
+- `SendstackRequestContext`, `SendstackResponseContext`, `SendstackRetryContext`
 
-Everything else is passed through as provided so the SDK stays forward-compatible with new API fields.
+Model types (optional typing aids):
 
-## Compatibility Appendix
-
-The SDK also includes helpers for older fully mailer-compatible APIs. These are not part of the current public Sendstack API surface:
-
-- `client.emails.send_batch(payloads, options=None)`
-- `client.emails.sendBatch(payloads, options=None)`
-- `client.domains`
-- `client.api_keys`
-- `client.apiKeys`
-- `client.webhooks`
-
-Use them only when the target API actually exposes those routes.
+- `Recipient`, `SendstackTag`, `TemplateReference`
+- `SendEmailRequest`, `SendEmailResult`, `SendEmailBatchResult`
+- `EmailMessage`, `EmailEvent`, `EmailStatus`
+- `UploadAttachmentRequest`, `UploadedAttachment`
+- `CreateDomainRequest`, `Domain`, `DomainRegion`, `DomainTlsPolicy`, `DomainCapability`
+- `CreateTemplateRequest`, `UpdateTemplateRequest`, `EmailTemplate`
+- `CreateWebhookEndpointRequest`, `UpdateWebhookEndpointRequest`, `WebhookEndpoint`
+- `WebhookEventType`, `KnownWebhookEvent`
+- `RetryWebhookEventResult`
+- `CreateSuppressionRequest`, `CreateSuppressionResult`, `Suppression`, `SuppressionReason`
+- `CursorPage`
 
 ## Development
 
-Install development dependencies:
-
 ```bash
 uv sync --extra dev
-```
-
-Run lint:
-
-```bash
 uv run ruff check .
-```
-
-Run tests:
-
-```bash
 uv run pytest
-```
-
-Build the package:
-
-```bash
 uv build
 ```

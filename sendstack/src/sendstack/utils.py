@@ -14,11 +14,11 @@ from .types import UNSET, QueryParams, QueryScalar, QueryValue
 def normalize_base_url(base_url: str) -> str:
     text = base_url.strip()
     if text == "":
-        raise TypeError("Mailer base_url is required.")
+        raise TypeError("SendStack base_url is required.")
 
     parts = urlsplit(text)
     if not parts.scheme or not parts.netloc:
-        raise TypeError("Mailer base_url must be a valid absolute URL.")
+        raise TypeError("SendStack base_url must be a valid absolute URL.")
 
     return urlunsplit(
         (parts.scheme, parts.netloc, parts.path.rstrip("/"), parts.query, "")

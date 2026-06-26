@@ -1,0 +1,30 @@
+{
+  "description": "Canonical SendStack public API route contract (HTTP method + path; path parameters normalized to {id}). Keep this file byte-identical across the SendStack SDK packages - each package's conformance test asserts its client wires exactly these routes, so the SDKs stay in sync without referencing one another.",
+  "routes": [
+    { "method": "POST", "path": "/attachments" },
+    { "method": "POST", "path": "/emails" },
+    { "method": "POST", "path": "/emails/batch" },
+    { "method": "GET", "path": "/emails" },
+    { "method": "GET", "path": "/emails/{id}" },
+    { "method": "GET", "path": "/emails/{id}/events" },
+    { "method": "POST", "path": "/emails/{id}/cancel" },
+    { "method": "POST", "path": "/emails/{id}/requeue" },
+    { "method": "POST", "path": "/domains" },
+    { "method": "GET", "path": "/domains" },
+    { "method": "GET", "path": "/domains/{id}" },
+    { "method": "POST", "path": "/domains/{id}/verify" },
+    { "method": "POST", "path": "/templates" },
+    { "method": "GET", "path": "/templates" },
+    { "method": "GET", "path": "/templates/{id}" },
+    { "method": "PATCH", "path": "/templates/{id}" },
+    { "method": "DELETE", "path": "/templates/{id}" },
+    { "method": "POST", "path": "/webhook-endpoints" },
+    { "method": "GET", "path": "/webhook-endpoints" },
+    { "method": "PATCH", "path": "/webhook-endpoints/{id}" },
+    { "method": "DELETE", "path": "/webhook-endpoints/{id}" },
+    { "method": "POST", "path": "/events/{id}/retry" },
+    { "method": "POST", "path": "/suppressions" },
+    { "method": "GET", "path": "/suppressions" },
+    { "method": "DELETE", "path": "/suppressions/{id}" }
+  ]
+}

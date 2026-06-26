@@ -1,12 +1,12 @@
 [project]
 name = "sendstack"
 version = "0.1.0"
-description = "Sync and async Python SDK for Sendstack and fully compatible APIs."
+description = "Sync and async Python SDK for the SendStack email SaaS API."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Noria Labs" }]
 license = "MIT"
-keywords = ["sendstack", "email", "sms", "whatsapp", "sdk", "httpx", "async"]
+keywords = ["sendstack", "email", "transactional-email", "webhooks", "httpx", "async", "sdk"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
