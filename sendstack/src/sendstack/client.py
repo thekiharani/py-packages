@@ -62,10 +62,11 @@ RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 class _BaseClient:
     def __init__(
         self,
-        token: str | None = None,
+        auth_token: str | None = None,
         *,
         base_url: str = DEFAULT_BASE_URL,
-        sender_id: str | None = None,
+        emails: Mapping[str, str] | None = None,
+        sms: Mapping[str, str] | None = None,
         timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS,
         headers: Mapping[str, str] | httpx.Headers | None = None,
         query: Mapping[str, object] | None = None,
@@ -75,10 +76,11 @@ class _BaseClient:
         parse_response: Any = None,
         transform_response: Any = None,
     ) -> None:
-        normalized_token = (token or "").strip()
-        self.token = normalized_token
-        # Default SMS sender id, applied to /sms sends unless the call overrides it.
-        self.sender_id = (sender_id or "").strip() or None
+        normalized_token = (auth_token or "").strip()
+        self.auth_token = normalized_token
+        # Per-channel defaults, applied to a send unless the call overrides them.
+        self.email_from = _default_value((emails or {}).get("from"))
+        self.sms_sender_id = _default_value((sms or {}).get("sender_id"))
         self.base_url = normalize_base_url(base_url)
         self.timeout_seconds = timeout_seconds
         self._default_headers = headers
@@ -252,10 +254,11 @@ class Sendstack(_BaseClient):
 
     def __init__(
         self,
-        token: str | None = None,
+        auth_token: str | None = None,
         *,
         base_url: str = DEFAULT_BASE_URL,
-        sender_id: str | None = None,
+        emails: Mapping[str, str] | None = None,
+        sms: Mapping[str, str] | None = None,
         client: httpx.Client | Any | None = None,
         timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS,
         headers: Mapping[str, str] | httpx.Headers | None = None,
@@ -267,9 +270,10 @@ class Sendstack(_BaseClient):
         transform_response: Any = None,
     ) -> None:
         super().__init__(
-            token,
+            auth_token,
             base_url=base_url,
-            sender_id=sender_id,
+            emails=emails,
+            sms=sms,
             timeout_seconds=timeout_seconds,
             headers=headers,
             query=query,
@@ -433,10 +437,11 @@ class AsyncSendstack(_BaseClient):
 
     def __init__(
         self,
-        token: str | None = None,
+        auth_token: str | None = None,
         *,
         base_url: str = DEFAULT_BASE_URL,
-        sender_id: str | None = None,
+        emails: Mapping[str, str] | None = None,
+        sms: Mapping[str, str] | None = None,
         client: httpx.AsyncClient | Any | None = None,
         timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS,
         headers: Mapping[str, str] | httpx.Headers | None = None,
@@ -448,9 +453,10 @@ class AsyncSendstack(_BaseClient):
         transform_response: Any = None,
     ) -> None:
         super().__init__(
-            token,
+            auth_token,
             base_url=base_url,
-            sender_id=sender_id,
+            emails=emails,
+            sms=sms,
             timeout_seconds=timeout_seconds,
             headers=headers,
             query=query,
@@ -642,7 +648,9 @@ class _Emails:
 
     def send(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
         return self._client.request(
-            "POST", "/emails", _with(options, body=_normalize_send_email_request(request))
+            "POST",
+            "/emails",
+            _with(options, body=_normalize_send_email_request(request, self._client.email_from)),
         )
 
     def send_batch(
@@ -651,7 +659,9 @@ class _Emails:
         options: RequestOptions | None = None,
     ) -> Any:
         return self._client.request(
-            "POST", "/emails/batch", _with(options, body=_normalize_send_email_batch(request))
+            "POST",
+            "/emails/batch",
+            _with(options, body=_normalize_send_email_batch(request, self._client.email_from)),
         )
 
     def list(
@@ -690,7 +700,7 @@ class _Sms:
         return self._client.request(
             "POST",
             "/sms",
-            _with(options, body=_normalize_send_sms_request(request, self._client.sender_id)),
+            _with(options, body=_normalize_send_sms_request(request, self._client.sms_sender_id)),
         )
 
     def send_batch(
@@ -701,7 +711,7 @@ class _Sms:
         return self._client.request(
             "POST",
             "/sms/batch",
-            _with(options, body=_normalize_send_sms_batch(request, self._client.sender_id)),
+            _with(options, body=_normalize_send_sms_batch(request, self._client.sms_sender_id)),
         )
 
     def list(
@@ -851,7 +861,13 @@ def _with(options: RequestOptions | None, **changes: object) -> RequestOptions:
     return replace(base, **changes)
 
 
-def _normalize_send_email_request(request: Mapping[str, Any]) -> dict[str, Any]:
+def _default_value(value: str | None) -> str | None:
+    return (value or "").strip() or None
+
+
+def _normalize_send_email_request(
+    request: Mapping[str, Any], default_from: str | None = None
+) -> dict[str, Any]:
     payload = dict(request)
     _rename(payload, "replyTo", "reply_to")
     _rename(payload, "trackOpens", "track_opens")
@@ -873,6 +889,9 @@ def _normalize_send_email_request(request: Mapping[str, Any]) -> dict[str, Any]:
             else attachment
             for attachment in attachments
         ]
+
+    if default_from is not None and payload.get("from") is None:
+        payload["from"] = default_from
     return payload
 
 
@@ -950,11 +969,12 @@ def _normalize_webhook_request(request: Mapping[str, Any]) -> dict[str, Any]:
 
 def _normalize_send_email_batch(
     request: Sequence[Mapping[str, Any]] | Mapping[str, Any],
+    default_from: str | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]]:
     if isinstance(request, Mapping):
         emails = request.get("emails", [])
-        return {"emails": [_normalize_send_email_request(email) for email in emails]}
-    return [_normalize_send_email_request(email) for email in request]
+        return {"emails": [_normalize_send_email_request(e, default_from) for e in emails]}
+    return [_normalize_send_email_request(e, default_from) for e in request]
 
 
 def _rename(payload: dict[str, Any], camel_name: str, snake_name: str) -> None:

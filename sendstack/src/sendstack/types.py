@@ -184,6 +184,14 @@ class SendstackTag(TypedDict):
     value: str
 
 
+# ``from`` is a reserved word, so the email defaults must use functional syntax.
+EmailDefaults = TypedDict("EmailDefaults", {"from": str}, total=False)
+
+
+class SmsDefaults(TypedDict, total=False):
+    sender_id: str
+
+
 class TemplateReference(TypedDict):
     id: str
     variables: NotRequired[Mapping[str, Any]]

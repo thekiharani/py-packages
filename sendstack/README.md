@@ -253,16 +253,37 @@ client.emails.send(
 )
 ```
 
-## SMS
+## Per-channel defaults
 
-SMS sends from a registered sender ID. Set a default `sender_id` once on the
-client and every `sms.send` / `sms.send_batch` call uses it unless that call
-passes its own `sender_id` to override:
+`from` (email) and `sender_id` (SMS) are usually constant, so set them once on
+the client. Each send fills the default in when the call omits it, and any
+per-send value overrides it:
 
 ```python
-client = Sendstack(token, sender_id="NORIA")
+client = Sendstack(
+    "mlr_live_…",
+    emails={"from": "Noria <hello@example.com>"},
+    sms={"sender_id": "NORIA"},
+)
 
-# Uses the client default sender ("NORIA").
+client.emails.send({"to": "customer@example.com", "subject": "Welcome", "html": "<p>Hi</p>"})  # from applied
+client.sms.send({"to": "+254700000000", "body": "Your code is 4821"})                          # sender_id applied
+```
+
+The channel namespaces are bound, so you can alias them for a terser call-site:
+
+```python
+sms = client.sms
+sms.send({"to": "+254700000000", "body": "Your code is 4821"})
+```
+
+## SMS
+
+With `sms={"sender_id": ...}` set on the client (above), a send only needs `to`
+and `body`; pass `sender_id` on the call to override for one message:
+
+```python
+# Uses the client default sender.
 client.sms.send({"to": "+254700000000", "body": "Your code is 1234"})
 
 # Overrides the default for this one message.
@@ -614,6 +635,7 @@ Model types (optional typing aids):
 - `CreateDomainRequest`, `Domain`, `DomainRegion`, `DomainTlsPolicy`, `DomainCapability`
 - `CreateTemplateRequest`, `UpdateTemplateRequest`, `EmailTemplate`
 - `TemplateChannel`, `TemplateVariable`, `PreviewTemplateRequest`, `TemplatePreview`
+- `EmailDefaults`, `SmsDefaults`
 - `CreateWebhookEndpointRequest`, `UpdateWebhookEndpointRequest`, `WebhookEndpoint`
 - `WebhookEventType`, `KnownWebhookEvent`
 - `RetryWebhookEventResult`

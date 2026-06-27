@@ -198,6 +198,43 @@ def test_emails_get_events_cancel_requeue():
     assert calls[3].url.path == "/api/v1/emails/m1/requeue"
 
 
+def test_emails_apply_client_default_from_with_override():
+    client, calls, http = make_sync(
+        [
+            ok_data({"id": "m1", "status": "queued"}),
+            ok_data({"id": "m2", "status": "queued"}),
+            ok_data({"batch_id": "b1", "data": []}),
+        ],
+        emails={"from": "Noria <hello@example.com>"},
+    )
+    try:
+        client.emails.send({"to": "friend@example.com", "subject": "Hi", "text": "Hello"})
+        client.emails.send(
+            {"from": "billing@example.com", "to": "friend@example.com", "text": "Hi"}
+        )
+        client.emails.send_batch(
+            [
+                {"to": "a@example.com", "text": "One"},
+                {"from": "ops@example.com", "to": "b@example.com", "text": "Two"},
+            ]
+        )
+    finally:
+        http.close()
+
+    assert client.email_from == "Noria <hello@example.com>"
+    assert json.loads(calls[0].content) == {
+        "to": "friend@example.com",
+        "subject": "Hi",
+        "text": "Hello",
+        "from": "Noria <hello@example.com>",
+    }
+    assert json.loads(calls[1].content)["from"] == "billing@example.com"
+    assert json.loads(calls[2].content) == [
+        {"to": "a@example.com", "text": "One", "from": "Noria <hello@example.com>"},
+        {"from": "ops@example.com", "to": "b@example.com", "text": "Two"},
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # SMS
 # --------------------------------------------------------------------------- #
@@ -211,7 +248,7 @@ def test_sms_aliases_sender_default_and_override():
             ok_data({"batch_id": "b1", "data": []}),
             ok_data({"batch_id": "b2", "data": []}),
         ],
-        sender_id="NORIA",
+        sms={"sender_id": "NORIA"},
     )
     try:
         client.sms.send(
@@ -237,7 +274,7 @@ def test_sms_aliases_sender_default_and_override():
     finally:
         http.close()
 
-    assert client.sender_id == "NORIA"
+    assert client.sms_sender_id == "NORIA"
     assert json.loads(calls[0].content) == {
         "to": "+254700000000",
         "body": "Your code is 1234",
@@ -282,7 +319,7 @@ def test_sms_without_client_sender_omits_it_and_list_get_events_cancel_requeue()
     finally:
         http.close()
 
-    assert client.sender_id is None
+    assert client.sms_sender_id is None
     assert json.loads(calls[0].content) == {"to": "+254700000000", "body": "Hi"}
     assert dict(calls[1].url.params) == {"extra": "1", "limit": "10", "status": "sent"}
     assert calls[2].url.path == "/api/v1/sms/sms 1"
