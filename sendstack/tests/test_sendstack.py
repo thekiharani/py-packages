@@ -131,7 +131,7 @@ def test_send_email_aliases_and_unwraps():
 
     assert result == {"id": "m_1", "status": "queued"}
     request = calls[0]
-    assert str(request.url) == "https://mailer.norialabs.com/emails"
+    assert str(request.url) == "https://sendstack.norialabs.com/api/v1/emails"
     assert request.method == "POST"
     assert request.headers["authorization"] == "Bearer tok"
     assert request.headers["accept"] == "application/json"
@@ -192,10 +192,10 @@ def test_emails_get_events_cancel_requeue():
         assert client.emails.requeue("m1")["status"] == "queued"
     finally:
         http.close()
-    assert calls[0].url.path == "/emails/m 1"  # decoded back by httpx (sent percent-encoded)
-    assert calls[1].url.path == "/emails/m1/events"
-    assert calls[2].method == "POST" and calls[2].url.path == "/emails/m1/cancel"
-    assert calls[3].url.path == "/emails/m1/requeue"
+    assert calls[0].url.path == "/api/v1/emails/m 1"  # decoded back by httpx (sent percent-encoded)
+    assert calls[1].url.path == "/api/v1/emails/m1/events"
+    assert calls[2].method == "POST" and calls[2].url.path == "/api/v1/emails/m1/cancel"
+    assert calls[3].url.path == "/api/v1/emails/m1/requeue"
 
 
 # --------------------------------------------------------------------------- #
@@ -224,8 +224,8 @@ def test_domains_resource():
         "provider_id": "p1",
         "custom_return_path": "bounce",
     }
-    assert calls[1].method == "GET" and calls[1].url.path == "/domains"
-    assert calls[3].url.path == "/domains/d1/verify"
+    assert calls[1].method == "GET" and calls[1].url.path == "/api/v1/domains"
+    assert calls[3].url.path == "/api/v1/domains/d1/verify"
 
 
 def test_templates_resource_including_delete_returns_none():
@@ -247,7 +247,7 @@ def test_templates_resource_including_delete_returns_none():
     finally:
         http.close()
     assert removed is None
-    assert calls[3].method == "PATCH" and calls[3].url.path == "/templates/t1"
+    assert calls[3].method == "PATCH" and calls[3].url.path == "/api/v1/templates/t1"
     assert calls[4].method == "DELETE"
 
 
@@ -268,8 +268,8 @@ def test_webhooks_resource_event_types_alias():
     finally:
         http.close()
     assert json.loads(calls[0].content) == {"url": "https://e.com", "event_types": ["email.sent"]}
-    assert calls[0].url.path == "/webhook-endpoints"
-    assert calls[3].method == "DELETE" and calls[3].url.path == "/webhook-endpoints/wh"
+    assert calls[0].url.path == "/api/v1/webhook-endpoints"
+    assert calls[3].method == "DELETE" and calls[3].url.path == "/api/v1/webhook-endpoints/wh"
 
 
 def test_webhook_events_retry_alias_attribute():
@@ -280,7 +280,7 @@ def test_webhook_events_retry_alias_attribute():
     finally:
         http.close()
     assert result["webhook_status"] == "queued"
-    assert calls[0].method == "POST" and calls[0].url.path == "/events/ev_1/retry"
+    assert calls[0].method == "POST" and calls[0].url.path == "/api/v1/events/ev_1/retry"
 
 
 def test_suppressions_resource():
@@ -297,8 +297,8 @@ def test_suppressions_resource():
         client.suppressions.remove("bad@x.com")
     finally:
         http.close()
-    assert calls[0].url.path == "/suppressions"
-    assert calls[2].method == "DELETE" and calls[2].url.path == "/suppressions/bad@x.com"
+    assert calls[0].url.path == "/api/v1/suppressions"
+    assert calls[2].method == "DELETE" and calls[2].url.path == "/api/v1/suppressions/bad@x.com"
 
 
 def test_attachments_upload_alias():
@@ -646,7 +646,7 @@ def test_close_owns_vs_injected_and_context_manager():
 def test_default_base_url_when_unspecified():
     client = Sendstack("tok")
     try:
-        assert client.base_url == "https://mailer.norialabs.com"
+        assert client.base_url == "https://sendstack.norialabs.com/api/v1"
     finally:
         client.close()
 

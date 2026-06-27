@@ -20,8 +20,10 @@ from typing import Any, Literal, NotRequired, TypeAlias, TypedDict
 
 import httpx
 
-# The live API host. Override via ``base_url`` when SendStack moves domains.
-DEFAULT_BASE_URL = "https://mailer.norialabs.com"
+# The versioned API base. Override via ``base_url`` for other environments;
+# include the /api/v1 segment, since resource paths (e.g. /emails) are sent
+# relative to whatever base is configured.
+DEFAULT_BASE_URL = "https://sendstack.norialabs.com/api/v1"
 
 # Sentinel distinguishing "no body" from an explicit ``None`` body.
 UNSET: Any = object()

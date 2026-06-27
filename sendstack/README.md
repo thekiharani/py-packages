@@ -96,11 +96,13 @@ decoded payload; on `AsyncSendstack` the same call returns a coroutine you
 
 ### Base URL
 
-The SDK defaults to `https://mailer.norialabs.com`, matching the current live
-API. Override it when you move to the SendStack domain:
+The SDK defaults to `https://sendstack.norialabs.com/api/v1` (the versioned API
+base). Override `base_url` to point at another environment — include the
+`/api/v1` version segment, since resource paths (e.g. `/emails`) are sent
+relative to whatever base you provide:
 
 ```python
-client = Sendstack(token, base_url="https://sendstack.norialabs.com")
+client = Sendstack(token, base_url="https://staging.norialabs.com/api/v1")
 ```
 
 ## Docs Split
@@ -112,7 +114,7 @@ The SaaS docs remain the canonical source for product/API behavior: account
 setup, API tokens, domain verification, DNS records, webhook event catalogs,
 deliverability concepts, provider behavior, dashboard workflows, and the raw
 HTTP API reference. Current live SaaS docs are at
-`https://mailer.norialabs.com/api/docs`.
+`https://sendstack.norialabs.com/api/docs`.
 
 ## Auth
 
@@ -135,7 +137,7 @@ request (sync or async callables both work):
 from sendstack import BearerAuthStrategy, Sendstack
 
 client = Sendstack(
-    base_url="https://mailer.norialabs.com",
+    base_url="https://sendstack.norialabs.com/api/v1",
     auth=BearerAuthStrategy(token=lambda context: get_fresh_token()),
 )
 ```
