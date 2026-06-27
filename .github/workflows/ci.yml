@@ -189,7 +189,7 @@ jobs:
     needs: [detect_changes, verify]
     if: github.ref == 'refs/heads/release' && needs.detect_changes.outputs.has_release_packages == 'true'
     runs-on: ubuntu-24.04
-    environment: pypi
+    environment: pypi-${{ matrix.package.name }}
     permissions:
       contents: write
       id-token: write
