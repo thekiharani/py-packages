@@ -199,6 +199,99 @@ def test_emails_get_events_cancel_requeue():
 
 
 # --------------------------------------------------------------------------- #
+# SMS
+# --------------------------------------------------------------------------- #
+
+
+def test_sms_aliases_sender_default_and_override():
+    client, calls, http = make_sync(
+        [
+            ok_data({"id": "sms_1", "status": "queued"}),
+            ok_data({"id": "sms_2", "status": "queued"}),
+            ok_data({"batch_id": "b1", "data": []}),
+            ok_data({"batch_id": "b2", "data": []}),
+        ],
+        sender_id="NORIA",
+    )
+    try:
+        client.sms.send(
+            {
+                "to": "+254700000000",
+                "body": "Your code is 1234",
+                "providerId": "prov_1",
+                "templateId": "tpl_otp",
+                "templateData": {"code": "1234"},
+                "scheduledAt": datetime(2026, 1, 1, tzinfo=UTC),
+            }
+        )
+        client.sms.send({"to": "+254700000001", "body": "Hi", "senderId": "OTHER"})
+        client.sms.send_batch(
+            {
+                "messages": [
+                    {"to": "+254700000002", "body": "One"},
+                    {"to": "+254700000003", "body": "Two", "senderId": "KEEP"},
+                ]
+            }
+        )
+        client.sms.sendBatch([{"to": "+254700000004", "body": "Solo"}])
+    finally:
+        http.close()
+
+    assert client.sender_id == "NORIA"
+    assert json.loads(calls[0].content) == {
+        "to": "+254700000000",
+        "body": "Your code is 1234",
+        "provider_id": "prov_1",
+        "template_id": "tpl_otp",
+        "template_data": {"code": "1234"},
+        "scheduled_at": "2026-01-01T00:00:00.000Z",
+        "sender_id": "NORIA",
+    }
+    assert calls[0].url.path == "/api/v1/sms"
+    assert json.loads(calls[1].content)["sender_id"] == "OTHER"
+    assert json.loads(calls[2].content) == {
+        "messages": [
+            {"to": "+254700000002", "body": "One", "sender_id": "NORIA"},
+            {"to": "+254700000003", "body": "Two", "sender_id": "KEEP"},
+        ]
+    }
+    assert calls[2].url.path == "/api/v1/sms/batch"
+    assert json.loads(calls[3].content) == [
+        {"to": "+254700000004", "body": "Solo", "sender_id": "NORIA"}
+    ]
+
+
+def test_sms_without_client_sender_omits_it_and_list_get_events_cancel_requeue():
+    client, calls, http = make_sync(
+        [
+            ok_data({"id": "sms_1", "status": "queued"}),
+            ok_data({"data": [], "next_cursor": None}),
+            ok_data({"id": "sms_1"}),
+            ok_data({"data": [{"id": "e1", "type": "sms.delivered"}]}),
+            ok_data({"id": "sms_1", "status": "canceled"}),
+            ok_data({"id": "sms_1", "status": "queued"}),
+        ]
+    )
+    try:
+        client.sms.send({"to": "+254700000000", "body": "Hi"})
+        client.sms.list(RequestOptions(query={"extra": "1"}), limit=10, status="sent")
+        client.sms.get("sms 1")
+        client.sms.events("sms_1")
+        client.sms.cancel("sms_1")
+        client.sms.requeue("sms_1")
+    finally:
+        http.close()
+
+    assert client.sender_id is None
+    assert json.loads(calls[0].content) == {"to": "+254700000000", "body": "Hi"}
+    assert dict(calls[1].url.params) == {"extra": "1", "limit": "10", "status": "sent"}
+    assert calls[2].url.path == "/api/v1/sms/sms 1"
+    assert calls[3].url.path == "/api/v1/sms/sms_1/events"
+    assert calls[4].method == "POST" and calls[4].url.path == "/api/v1/sms/sms_1/cancel"
+    assert calls[5].url.path == "/api/v1/sms/sms_1/requeue"
+
+
+# --------------------------------------------------------------------------- #
 # Domains / Templates / Webhooks / Suppressions / Attachments
 # --------------------------------------------------------------------------- #
 
@@ -249,6 +342,52 @@ def test_templates_resource_including_delete_returns_none():
     assert removed is None
     assert calls[3].method == "PATCH" and calls[3].url.path == "/api/v1/templates/t1"
     assert calls[4].method == "DELETE"
+
+
+def test_templates_preview_channel_filter_and_sample_data_alias():
+    client, calls, http = make_sync(
+        [
+            ok_data(
+                {
+                    "channel": "sms",
+                    "subject": None,
+                    "html": None,
+                    "text": None,
+                    "body": "Your code is 1234",
+                    "segments": 1,
+                    "variables": ["code"],
+                }
+            ),
+            ok_data({"id": "t1"}),
+            ok_data({"data": []}),
+        ]
+    )
+    try:
+        preview = client.templates.preview(
+            {"templateId": "tpl_otp", "data": {"code": "1234"}}
+        )
+        client.templates.create(
+            {
+                "channel": "sms",
+                "name": "otp",
+                "body": "Your code is {{ code }}",
+                "sampleData": {"code": "1234"},
+            }
+        )
+        client.templates.list(channel="sms")
+    finally:
+        http.close()
+
+    assert preview["segments"] == 1
+    assert calls[0].method == "POST" and calls[0].url.path == "/api/v1/templates/preview"
+    assert json.loads(calls[0].content) == {"template_id": "tpl_otp", "data": {"code": "1234"}}
+    assert json.loads(calls[1].content) == {
+        "channel": "sms",
+        "name": "otp",
+        "body": "Your code is {{ code }}",
+        "sample_data": {"code": "1234"},
+    }
+    assert dict(calls[2].url.params) == {"channel": "sms"}
 
 
 def test_webhooks_resource_event_types_alias():

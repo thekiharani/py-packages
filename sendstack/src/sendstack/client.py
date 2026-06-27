@@ -1,6 +1,6 @@
 """Sync and async SendStack clients.
 
-Exposes the seven bearer-callable resource groups plus a low-level
+Exposes the eight bearer-callable resource groups plus a low-level
 ``request(...)`` escape hatch, via a synchronous :class:`Sendstack` and an
 asynchronous :class:`AsyncSendstack`, both backed by ``httpx``, with
 context-manager support.
@@ -65,6 +65,7 @@ class _BaseClient:
         token: str | None = None,
         *,
         base_url: str = DEFAULT_BASE_URL,
+        sender_id: str | None = None,
         timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS,
         headers: Mapping[str, str] | httpx.Headers | None = None,
         query: Mapping[str, object] | None = None,
@@ -76,6 +77,8 @@ class _BaseClient:
     ) -> None:
         normalized_token = (token or "").strip()
         self.token = normalized_token
+        # Default SMS sender id, applied to /sms sends unless the call overrides it.
+        self.sender_id = (sender_id or "").strip() or None
         self.base_url = normalize_base_url(base_url)
         self.timeout_seconds = timeout_seconds
         self._default_headers = headers
@@ -252,6 +255,7 @@ class Sendstack(_BaseClient):
         token: str | None = None,
         *,
         base_url: str = DEFAULT_BASE_URL,
+        sender_id: str | None = None,
         client: httpx.Client | Any | None = None,
         timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS,
         headers: Mapping[str, str] | httpx.Headers | None = None,
@@ -265,6 +269,7 @@ class Sendstack(_BaseClient):
         super().__init__(
             token,
             base_url=base_url,
+            sender_id=sender_id,
             timeout_seconds=timeout_seconds,
             headers=headers,
             query=query,
@@ -431,6 +436,7 @@ class AsyncSendstack(_BaseClient):
         token: str | None = None,
         *,
         base_url: str = DEFAULT_BASE_URL,
+        sender_id: str | None = None,
         client: httpx.AsyncClient | Any | None = None,
         timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS,
         headers: Mapping[str, str] | httpx.Headers | None = None,
@@ -444,6 +450,7 @@ class AsyncSendstack(_BaseClient):
         super().__init__(
             token,
             base_url=base_url,
+            sender_id=sender_id,
             timeout_seconds=timeout_seconds,
             headers=headers,
             query=query,
@@ -607,6 +614,7 @@ _Client = Sendstack | AsyncSendstack
 def _attach_resources(client: _Client) -> None:
     client.attachments = _Attachments(client)
     client.emails = _Emails(client)
+    client.sms = _Sms(client)
     client.domains = _Domains(client)
     client.templates = _Templates(client)
     client.webhooks = _Webhooks(client)
@@ -673,6 +681,56 @@ class _Emails:
         return self._client.request("POST", f"/emails/{_quote(message_id)}/requeue", options)
 
 
+class _Sms:
+    def __init__(self, client: _Client) -> None:
+        self._client = client
+        self.sendBatch = self.send_batch  # camelCase alias
+
+    def send(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
+        return self._client.request(
+            "POST",
+            "/sms",
+            _with(options, body=_normalize_send_sms_request(request, self._client.sender_id)),
+        )
+
+    def send_batch(
+        self,
+        request: Sequence[Mapping[str, Any]] | Mapping[str, Any],
+        options: RequestOptions | None = None,
+    ) -> Any:
+        return self._client.request(
+            "POST",
+            "/sms/batch",
+            _with(options, body=_normalize_send_sms_batch(request, self._client.sender_id)),
+        )
+
+    def list(
+        self,
+        options: RequestOptions | None = None,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        status: str | None = None,
+    ) -> Any:
+        query = merge_query_params(
+            {"limit": limit, "cursor": cursor, "status": status},
+            options.query if options else None,
+        )
+        return self._client.request("GET", "/sms", _with(options, query=query))
+
+    def get(self, message_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", f"/sms/{_quote(message_id)}", options)
+
+    def events(self, message_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", f"/sms/{_quote(message_id)}/events", options)
+
+    def cancel(self, message_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("POST", f"/sms/{_quote(message_id)}/cancel", options)
+
+    def requeue(self, message_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("POST", f"/sms/{_quote(message_id)}/requeue", options)
+
+
 class _Domains:
     def __init__(self, client: _Client) -> None:
         self._client = client
@@ -697,10 +755,15 @@ class _Templates:
         self._client = client
 
     def create(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
-        return self._client.request("POST", "/templates", _with(options, body=dict(request)))
+        return self._client.request(
+            "POST", "/templates", _with(options, body=_normalize_template_request(request))
+        )
 
-    def list(self, options: RequestOptions | None = None) -> Any:
-        return self._client.request("GET", "/templates", options)
+    def list(self, options: RequestOptions | None = None, *, channel: str | None = None) -> Any:
+        query = merge_query_params(
+            {"channel": channel}, options.query if options else None
+        )
+        return self._client.request("GET", "/templates", _with(options, query=query))
 
     def get(self, template_id: str, options: RequestOptions | None = None) -> Any:
         return self._client.request("GET", f"/templates/{_quote(template_id)}", options)
@@ -712,11 +775,20 @@ class _Templates:
         options: RequestOptions | None = None,
     ) -> Any:
         return self._client.request(
-            "PATCH", f"/templates/{_quote(template_id)}", _with(options, body=dict(request))
+            "PATCH",
+            f"/templates/{_quote(template_id)}",
+            _with(options, body=_normalize_template_request(request)),
         )
 
     def remove(self, template_id: str, options: RequestOptions | None = None) -> Any:
         return self._client.request("DELETE", f"/templates/{_quote(template_id)}", options)
+
+    def preview(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
+        return self._client.request(
+            "POST",
+            "/templates/preview",
+            _with(options, body=_normalize_template_preview_request(request)),
+        )
 
 
 class _Webhooks:
@@ -817,6 +889,49 @@ def _normalize_upload_attachment_request(request: Mapping[str, Any]) -> dict[str
     payload = dict(request)
     _rename(payload, "contentBase64", "content_base64")
     _rename(payload, "contentType", "content_type")
+    return payload
+
+
+def _normalize_send_sms_request(
+    request: Mapping[str, Any], default_sender_id: str | None = None
+) -> dict[str, Any]:
+    payload = dict(request)
+    _rename(payload, "senderId", "sender_id")
+    _rename(payload, "providerId", "provider_id")
+    _rename(payload, "templateId", "template_id")
+    _rename(payload, "templateData", "template_data")
+    _rename(payload, "scheduledAt", "scheduled_at")
+
+    scheduled_at = payload.get("scheduled_at")
+    if isinstance(scheduled_at, datetime):
+        payload["scheduled_at"] = serialize_datetime(scheduled_at)
+
+    if default_sender_id is not None and payload.get("sender_id") is None:
+        payload["sender_id"] = default_sender_id
+    return payload
+
+
+def _normalize_send_sms_batch(
+    request: Sequence[Mapping[str, Any]] | Mapping[str, Any],
+    default_sender_id: str | None = None,
+) -> dict[str, Any] | list[dict[str, Any]]:
+    if isinstance(request, Mapping):
+        messages = request.get("messages", [])
+        return {
+            "messages": [_normalize_send_sms_request(m, default_sender_id) for m in messages]
+        }
+    return [_normalize_send_sms_request(m, default_sender_id) for m in request]
+
+
+def _normalize_template_request(request: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(request)
+    _rename(payload, "sampleData", "sample_data")
+    return payload
+
+
+def _normalize_template_preview_request(request: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(request)
+    _rename(payload, "templateId", "template_id")
     return payload
 
 

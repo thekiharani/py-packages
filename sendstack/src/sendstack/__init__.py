@@ -1,9 +1,9 @@
 """Official Python SDK for the SendStack email SaaS API.
 
 Sync (:class:`Sendstack`) and async (:class:`AsyncSendstack`) clients covering
-the SendStack developer API: transactional and scheduled email, batch email,
-reusable attachment uploads, sending domains, email templates, webhook endpoints
-and event retries, and suppression lists.
+the SendStack developer API: transactional and scheduled email and SMS, batch
+sends, reusable attachment uploads, sending domains, email/SMS templates,
+webhook endpoints and event retries, and suppression lists.
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ from .types import (
     EmailTemplate,
     HeadersAuthStrategy,
     KnownWebhookEvent,
+    PreviewTemplateRequest,
     Recipient,
     RequestOptions,
     ResponseParser,
@@ -54,15 +55,24 @@ from .types import (
     SendEmailBatchResult,
     SendEmailRequest,
     SendEmailResult,
+    SendSmsBatchResult,
+    SendSmsRequest,
+    SendSmsResult,
     SendstackAuthStrategy,
     SendstackMiddleware,
     SendstackRequestContext,
     SendstackResponseContext,
     SendstackRetryContext,
     SendstackTag,
+    SmsEvent,
+    SmsMessage,
+    SmsStatus,
     Suppression,
     SuppressionReason,
+    TemplateChannel,
+    TemplatePreview,
     TemplateReference,
+    TemplateVariable,
     UpdateTemplateRequest,
     UpdateWebhookEndpointRequest,
     UploadAttachmentRequest,
@@ -111,6 +121,12 @@ __all__ = [
     "EmailMessage",
     "EmailEvent",
     "EmailStatus",
+    "SendSmsRequest",
+    "SendSmsResult",
+    "SendSmsBatchResult",
+    "SmsMessage",
+    "SmsEvent",
+    "SmsStatus",
     "UploadAttachmentRequest",
     "UploadedAttachment",
     "CreateDomainRequest",
@@ -121,6 +137,10 @@ __all__ = [
     "Domain",
     "CreateTemplateRequest",
     "UpdateTemplateRequest",
+    "TemplateChannel",
+    "TemplateVariable",
+    "PreviewTemplateRequest",
+    "TemplatePreview",
     "EmailTemplate",
     "CreateWebhookEndpointRequest",
     "UpdateWebhookEndpointRequest",

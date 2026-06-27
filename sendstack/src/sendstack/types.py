@@ -155,6 +155,8 @@ class RequestOptions:
 # --------------------------------------------------------------------------- #
 
 EmailStatus = Literal["queued", "sending", "sent", "failed", "canceled"]
+SmsStatus = EmailStatus
+TemplateChannel = Literal["email", "sms"]
 DomainRegion = Literal["af-south-1", "us-east-1", "eu-central-1"]
 DomainTlsPolicy = Literal["opportunistic", "enforced"]
 DomainCapability = Literal["enabled", "disabled"]
@@ -293,18 +295,52 @@ class Domain(TypedDict):
     createdAt: str
 
 
+class TemplateVariable(TypedDict, total=False):
+    name: str
+    required: bool
+    description: str
+    example: str
+
+
 class CreateTemplateRequest(TypedDict, total=False):
+    channel: TemplateChannel
     name: str
     slug: str
     subject: str
     html: str
     text: str
+    body: str
+    variables: Sequence[TemplateVariable]
+    sample_data: Mapping[str, Any]
 
 
 class UpdateTemplateRequest(TypedDict, total=False):
     subject: str
     html: str | None
     text: str | None
+    body: str
+    variables: Sequence[TemplateVariable]
+    sample_data: Mapping[str, Any]
+
+
+class PreviewTemplateRequest(TypedDict, total=False):
+    template_id: str
+    channel: TemplateChannel
+    subject: str
+    html: str
+    text: str
+    body: str
+    data: Mapping[str, Any]
+
+
+class TemplatePreview(TypedDict):
+    channel: str
+    subject: str | None
+    html: str | None
+    text: str | None
+    body: str | None
+    segments: int | None
+    variables: list[str]
 
 
 class EmailTemplate(TypedDict):
@@ -315,6 +351,50 @@ class EmailTemplate(TypedDict):
     htmlBody: str | None
     textBody: str | None
     createdAt: str
+
+
+class SendSmsRequest(TypedDict, total=False):
+    to: str
+    body: str
+    sender_id: str
+    provider_id: str
+    metadata: Mapping[str, str]
+    template_id: str
+    template_data: Mapping[str, Any]
+    scheduled_at: str | datetime
+
+
+class SendSmsResult(TypedDict):
+    id: str
+    status: str
+
+
+class SendSmsBatchResult(TypedDict):
+    batch_id: str
+    data: list[SendSmsResult]
+
+
+class SmsMessage(TypedDict):
+    id: str
+    status: str
+    to: str
+    body: str
+    segments: int
+    sender_id: str | None
+    provider_id: str | None
+    provider_message_id: str | None
+    attempts: int
+    scheduled_at: str | None
+    sent_at: str | None
+    last_error: str | None
+    metadata: Mapping[str, Any]
+    created_at: str
+
+
+class SmsEvent(TypedDict):
+    id: str
+    type: str
+    occurred_at: NotRequired[str]
 
 
 class CreateWebhookEndpointRequest(TypedDict, total=False):

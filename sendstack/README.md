@@ -1,17 +1,17 @@
 # `sendstack`
 
-Official Python SDK for the SendStack email SaaS API.
+Official Python SDK for the SendStack messaging API.
 
 Built on `httpx`, it ships both a synchronous client (`Sendstack`) and an
 asynchronous client (`AsyncSendstack`) covering the SendStack developer API.
 
 Use it for:
 
-- transactional and scheduled email
-- batch email
+- transactional and scheduled email and SMS
+- batch email and SMS
 - reusable attachment uploads
 - sending domains
-- email templates
+- email and SMS templates (with rendered previews)
 - webhook endpoints and webhook event retries
 - suppression lists
 
@@ -157,6 +157,13 @@ and `RequestOptions(authenticated=False)` to strip auth for a single call.
 | `emails.events(message_id, options=None)` | `GET /emails/{id}/events` | `CursorPage` |
 | `emails.cancel(message_id, options=None)` | `POST /emails/{id}/cancel` | `EmailMessage` |
 | `emails.requeue(message_id, options=None)` | `POST /emails/{id}/requeue` | `EmailMessage` |
+| `sms.send(payload, options=None)` | `POST /sms` | `SendSmsResult` |
+| `sms.send_batch(payload, options=None)` | `POST /sms/batch` | `SendSmsBatchResult` |
+| `sms.list(options=None, *, limit=None, cursor=None, status=None)` | `GET /sms` | `CursorPage` |
+| `sms.get(message_id, options=None)` | `GET /sms/{id}` | `SmsMessage` |
+| `sms.events(message_id, options=None)` | `GET /sms/{id}/events` | `CursorPage` |
+| `sms.cancel(message_id, options=None)` | `POST /sms/{id}/cancel` | `SmsMessage` |
+| `sms.requeue(message_id, options=None)` | `POST /sms/{id}/requeue` | `SmsMessage` |
 | `domains.create(payload, options=None)` | `POST /domains` | `Domain` |
 | `domains.list(options=None)` | `GET /domains` | `CursorPage` |
 | `domains.get(domain_id, options=None)` | `GET /domains/{id}` | `Domain` |
@@ -166,6 +173,7 @@ and `RequestOptions(authenticated=False)` to strip auth for a single call.
 | `templates.get(template_id, options=None)` | `GET /templates/{id}` | `EmailTemplate` |
 | `templates.update(template_id, payload, options=None)` | `PATCH /templates/{id}` | `EmailTemplate` |
 | `templates.remove(template_id, options=None)` | `DELETE /templates/{id}` | `None` |
+| `templates.preview(payload, options=None)` | `POST /templates/preview` | `TemplatePreview` |
 | `webhooks.create(payload, options=None)` | `POST /webhook-endpoints` | `WebhookEndpoint` |
 | `webhooks.list(options=None)` | `GET /webhook-endpoints` | `CursorPage` |
 | `webhooks.update(webhook_id, payload, options=None)` | `PATCH /webhook-endpoints/{id}` | `WebhookEndpoint` |
@@ -176,7 +184,8 @@ and `RequestOptions(authenticated=False)` to strip auth for a single call.
 | `suppressions.remove(recipient, options=None)` | `DELETE /suppressions/{recipient}` | `None` |
 
 `webhook_events` is also available as `webhookEvents`, and `emails.send_batch`
-as `emails.sendBatch`, as convenience camelCase aliases.
+/ `sms.send_batch` as `emails.sendBatch` / `sms.sendBatch`, as convenience
+camelCase aliases.
 
 Methods take a plain `dict` payload and return plain `dict` responses (the
 `{"ok": true, "data": ...}` envelope is unwrapped for you). The exported model
@@ -243,6 +252,40 @@ client.emails.send(
     }
 )
 ```
+
+## SMS
+
+SMS sends from a registered sender ID. Set a default `sender_id` once on the
+client and every `sms.send` / `sms.send_batch` call uses it unless that call
+passes its own `sender_id` to override:
+
+```python
+client = Sendstack(token, sender_id="NORIA")
+
+# Uses the client default sender ("NORIA").
+client.sms.send({"to": "+254700000000", "body": "Your code is 1234"})
+
+# Overrides the default for this one message.
+client.sms.send({"to": "+254700000001", "body": "Reminder", "sender_id": "CLINIC"})
+```
+
+Batch sends accept either a list or `{"messages": [...]}`, and the default
+sender is applied per message:
+
+```python
+client.sms.send_batch(
+    [
+        {"to": "+254700000002", "body": "First"},
+        {"to": "+254700000003", "body": "Second", "sender_id": "ALERTS"},
+    ]
+)
+```
+
+`sms.list`, `sms.get`, `sms.events`, `sms.cancel`, and `sms.requeue` mirror the
+`emails.*` counterparts. SMS responses include a `segments` count — billing is
+one credit per segment. `sms.send` also accepts the camelCase aliases
+`senderId`, `providerId`, `templateId`, `templateData`, and `scheduledAt`
+(`scheduled_at` accepts a `datetime`, serialized to ISO-8601).
 
 ## Attachments
 
@@ -324,6 +367,10 @@ client.domains.verify(domain["id"])
 
 ## Templates
 
+Templates are channel-aware: pass `"channel": "email"` (the default) or
+`"channel": "sms"`. Email templates use `subject`/`html`/`text`; SMS templates
+use `body`. Filter the list with `client.templates.list(channel="sms")`.
+
 ```python
 template = client.templates.create(
     {
@@ -342,6 +389,24 @@ client.emails.send(
         "template": {"id": template["id"], "variables": {"firstName": "Amina"}},
     }
 )
+```
+
+Render any template against sample data with `templates.preview` before
+sending — for SMS the preview returns the `segments` count so you can check cost
+up front:
+
+```python
+otp = client.templates.create(
+    {
+        "channel": "sms",
+        "name": "otp",
+        "body": "Your code is {{ code }}",
+        "sample_data": {"code": "1234"},
+    }
+)
+
+preview = client.templates.preview({"template_id": otp["id"], "data": {"code": "4821"}})
+# {"channel": "sms", "body": "Your code is 4821", "segments": 1, "variables": ["code"], ...}
 ```
 
 ## Webhooks
@@ -370,16 +435,18 @@ client.suppressions.remove("bad@example.com")
 ## Field Aliases
 
 Python users write idiomatic snake_case, which is exactly the wire format for
-email, attachment, webhook, and domain fields — `reply_to`, `track_opens`,
-`track_clicks`, `provider_id`, `template_id`, `template_data`, `scheduled_at`,
-`content_base64`, `content_type`, `attachment_id`, `content_id`, `event_types`,
+email, SMS, attachment, template, webhook, and domain fields — `reply_to`,
+`track_opens`, `track_clicks`, `provider_id`, `sender_id`, `template_id`,
+`template_data`, `scheduled_at`, `sample_data`, `content_base64`,
+`content_type`, `attachment_id`, `content_id`, `event_types`,
 `custom_return_path`. No translation needed.
 
 The camelCase aliases (`replyTo`, `trackOpens`,
-`trackClicks`, `providerId`, `templateId`, `templateData`, `scheduledAt`,
-`contentBase64`, `attachmentId`, `eventTypes`, …) are also accepted and
-converted to the wire field names. Everything else is passed through unchanged,
-so the SDK stays forward-compatible with new API fields.
+`trackClicks`, `providerId`, `senderId`, `templateId`, `templateData`,
+`scheduledAt`, `sampleData`, `contentBase64`, `attachmentId`, `eventTypes`, …)
+are also accepted and converted to the wire field names. Everything else is
+passed through unchanged, so the SDK stays forward-compatible with new API
+fields.
 
 ## Request Options
 
@@ -541,9 +608,12 @@ Model types (optional typing aids):
 - `Recipient`, `SendstackTag`, `TemplateReference`
 - `SendEmailRequest`, `SendEmailResult`, `SendEmailBatchResult`
 - `EmailMessage`, `EmailEvent`, `EmailStatus`
+- `SendSmsRequest`, `SendSmsResult`, `SendSmsBatchResult`
+- `SmsMessage`, `SmsEvent`, `SmsStatus`
 - `UploadAttachmentRequest`, `UploadedAttachment`
 - `CreateDomainRequest`, `Domain`, `DomainRegion`, `DomainTlsPolicy`, `DomainCapability`
 - `CreateTemplateRequest`, `UpdateTemplateRequest`, `EmailTemplate`
+- `TemplateChannel`, `TemplateVariable`, `PreviewTemplateRequest`, `TemplatePreview`
 - `CreateWebhookEndpointRequest`, `UpdateWebhookEndpointRequest`, `WebhookEndpoint`
 - `WebhookEventType`, `KnownWebhookEvent`
 - `RetryWebhookEventResult`
