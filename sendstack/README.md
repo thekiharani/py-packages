@@ -255,7 +255,7 @@ client.emails.send(
 
 ## Per-channel defaults
 
-`from` (email) and `sender_id` (SMS) are usually constant, so set them once on
+`from` (email) and `from` (SMS) are usually constant, so set them once on
 the client. Each send fills the default in when the call omits it, and any
 per-send value overrides it:
 
@@ -263,11 +263,11 @@ per-send value overrides it:
 client = Sendstack(
     "mlr_live_…",
     emails={"from": "Noria <hello@example.com>"},
-    sms={"sender_id": "NORIA"},
+    sms={"from": "NORIA"},
 )
 
 client.emails.send({"to": "customer@example.com", "subject": "Welcome", "html": "<p>Hi</p>"})  # from applied
-client.sms.send({"to": "+254700000000", "body": "Your code is 4821"})                          # sender_id applied
+client.sms.send({"to": "+254700000000", "body": "Your code is 4821"})                          # from applied
 ```
 
 The channel namespaces are bound, so you can alias them for a terser call-site:
@@ -279,15 +279,15 @@ sms.send({"to": "+254700000000", "body": "Your code is 4821"})
 
 ## SMS
 
-With `sms={"sender_id": ...}` set on the client (above), a send only needs `to`
-and `body`; pass `sender_id` on the call to override for one message:
+With `sms={"from": ...}` set on the client (above), a send only needs `to`
+and `body`; pass `from` on the call to override for one message:
 
 ```python
 # Uses the client default sender.
 client.sms.send({"to": "+254700000000", "body": "Your code is 1234"})
 
 # Overrides the default for this one message.
-client.sms.send({"to": "+254700000001", "body": "Reminder", "sender_id": "CLINIC"})
+client.sms.send({"to": "+254700000001", "body": "Reminder", "from": "CLINIC"})
 ```
 
 Batch sends accept either a list or `{"messages": [...]}`, and the default
@@ -297,7 +297,7 @@ sender is applied per message:
 client.sms.send_batch(
     [
         {"to": "+254700000002", "body": "First"},
-        {"to": "+254700000003", "body": "Second", "sender_id": "ALERTS"},
+        {"to": "+254700000003", "body": "Second", "from": "ALERTS"},
     ]
 )
 ```
@@ -305,7 +305,7 @@ client.sms.send_batch(
 `sms.list`, `sms.get`, `sms.events`, `sms.cancel`, and `sms.requeue` mirror the
 `emails.*` counterparts. SMS responses include a `segments` count — billing is
 one credit per segment. `sms.send` also accepts the camelCase aliases
-`senderId`, `providerId`, `templateId`, `templateData`, and `scheduledAt`
+`providerId`, `templateId`, `templateData`, and `scheduledAt`
 (`scheduled_at` accepts a `datetime`, serialized to ISO-8601).
 
 ## Attachments
@@ -457,13 +457,13 @@ client.suppressions.remove("bad@example.com")
 
 Python users write idiomatic snake_case, which is exactly the wire format for
 email, SMS, attachment, template, webhook, and domain fields — `reply_to`,
-`track_opens`, `track_clicks`, `provider_id`, `sender_id`, `template_id`,
+`track_opens`, `track_clicks`, `provider_id`, `template_id`,
 `template_data`, `scheduled_at`, `sample_data`, `content_base64`,
 `content_type`, `attachment_id`, `content_id`, `event_types`,
 `custom_return_path`. No translation needed.
 
 The camelCase aliases (`replyTo`, `trackOpens`,
-`trackClicks`, `providerId`, `senderId`, `templateId`, `templateData`,
+`trackClicks`, `providerId`, `templateId`, `templateData`,
 `scheduledAt`, `sampleData`, `contentBase64`, `attachmentId`, `eventTypes`, …)
 are also accepted and converted to the wire field names. Everything else is
 passed through unchanged, so the SDK stays forward-compatible with new API

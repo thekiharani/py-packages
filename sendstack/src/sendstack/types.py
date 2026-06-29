@@ -188,8 +188,8 @@ class SendstackTag(TypedDict):
 EmailDefaults = TypedDict("EmailDefaults", {"from": str}, total=False)
 
 
-class SmsDefaults(TypedDict, total=False):
-    sender_id: str
+# ``from`` is a reserved word, so the SMS defaults must use functional syntax.
+SmsDefaults = TypedDict("SmsDefaults", {"from": str}, total=False)
 
 
 class TemplateReference(TypedDict):
@@ -361,15 +361,21 @@ class EmailTemplate(TypedDict):
     createdAt: str
 
 
-class SendSmsRequest(TypedDict, total=False):
-    to: str
-    body: str
-    sender_id: str
-    provider_id: str
-    metadata: Mapping[str, str]
-    template_id: str
-    template_data: Mapping[str, Any]
-    scheduled_at: str | datetime
+# ``from`` is a reserved word, so the SMS request must use functional syntax.
+SendSmsRequest = TypedDict(
+    "SendSmsRequest",
+    {
+        "to": str,
+        "body": str,
+        "from": str,
+        "provider_id": str,
+        "metadata": Mapping[str, str],
+        "template_id": str,
+        "template_data": Mapping[str, Any],
+        "scheduled_at": str | datetime,
+    },
+    total=False,
+)
 
 
 class SendSmsResult(TypedDict):
@@ -388,6 +394,7 @@ class SmsMessage(TypedDict):
     to: str
     body: str
     segments: int
+    sender: str | None
     sender_id: str | None
     provider_id: str | None
     provider_message_id: str | None

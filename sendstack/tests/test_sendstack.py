@@ -248,7 +248,7 @@ def test_sms_aliases_sender_default_and_override():
             ok_data({"batch_id": "b1", "data": []}),
             ok_data({"batch_id": "b2", "data": []}),
         ],
-        sms={"sender_id": "NORIA"},
+        sms={"from": "NORIA"},
     )
     try:
         client.sms.send(
@@ -261,12 +261,12 @@ def test_sms_aliases_sender_default_and_override():
                 "scheduledAt": datetime(2026, 1, 1, tzinfo=UTC),
             }
         )
-        client.sms.send({"to": "+254700000001", "body": "Hi", "senderId": "OTHER"})
+        client.sms.send({"to": "+254700000001", "body": "Hi", "from": "OTHER"})
         client.sms.send_batch(
             {
                 "messages": [
                     {"to": "+254700000002", "body": "One"},
-                    {"to": "+254700000003", "body": "Two", "senderId": "KEEP"},
+                    {"to": "+254700000003", "body": "Two", "from": "KEEP"},
                 ]
             }
         )
@@ -282,19 +282,19 @@ def test_sms_aliases_sender_default_and_override():
         "template_id": "tpl_otp",
         "template_data": {"code": "1234"},
         "scheduled_at": "2026-01-01T00:00:00.000Z",
-        "sender_id": "NORIA",
+        "from": "NORIA",
     }
     assert calls[0].url.path == "/api/v1/sms"
-    assert json.loads(calls[1].content)["sender_id"] == "OTHER"
+    assert json.loads(calls[1].content)["from"] == "OTHER"
     assert json.loads(calls[2].content) == {
         "messages": [
-            {"to": "+254700000002", "body": "One", "sender_id": "NORIA"},
-            {"to": "+254700000003", "body": "Two", "sender_id": "KEEP"},
+            {"to": "+254700000002", "body": "One", "from": "NORIA"},
+            {"to": "+254700000003", "body": "Two", "from": "KEEP"},
         ]
     }
     assert calls[2].url.path == "/api/v1/sms/batch"
     assert json.loads(calls[3].content) == [
-        {"to": "+254700000004", "body": "Solo", "sender_id": "NORIA"}
+        {"to": "+254700000004", "body": "Solo", "from": "NORIA"}
     ]
 
 

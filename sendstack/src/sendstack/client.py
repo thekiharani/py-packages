@@ -80,7 +80,7 @@ class _BaseClient:
         self.auth_token = normalized_token
         # Per-channel defaults, applied to a send unless the call overrides them.
         self.email_from = _default_value((emails or {}).get("from"))
-        self.sms_sender_id = _default_value((sms or {}).get("sender_id"))
+        self.sms_sender_id = _default_value((sms or {}).get("from"))
         self.base_url = normalize_base_url(base_url)
         self.timeout_seconds = timeout_seconds
         self._default_headers = headers
@@ -915,7 +915,6 @@ def _normalize_send_sms_request(
     request: Mapping[str, Any], default_sender_id: str | None = None
 ) -> dict[str, Any]:
     payload = dict(request)
-    _rename(payload, "senderId", "sender_id")
     _rename(payload, "providerId", "provider_id")
     _rename(payload, "templateId", "template_id")
     _rename(payload, "templateData", "template_data")
@@ -925,8 +924,8 @@ def _normalize_send_sms_request(
     if isinstance(scheduled_at, datetime):
         payload["scheduled_at"] = serialize_datetime(scheduled_at)
 
-    if default_sender_id is not None and payload.get("sender_id") is None:
-        payload["sender_id"] = default_sender_id
+    if default_sender_id is not None and payload.get("from") is None:
+        payload["from"] = default_sender_id
     return payload
 
 
