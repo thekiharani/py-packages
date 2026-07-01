@@ -73,7 +73,6 @@ from .types import (
     SuppressionReason,
     TemplateChannel,
     TemplatePreview,
-    TemplateReference,
     TemplateVariable,
     UpdateTemplateRequest,
     UpdateWebhookEndpointRequest,
@@ -116,7 +115,6 @@ __all__ = [
     # API models
     "Recipient",
     "SendstackTag",
-    "TemplateReference",
     "SendEmailRequest",
     "SendEmailResult",
     "SendEmailBatchResult",

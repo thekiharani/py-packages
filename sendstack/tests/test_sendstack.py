@@ -401,7 +401,7 @@ def test_templates_preview_channel_filter_and_sample_data_alias():
     )
     try:
         preview = client.templates.preview(
-            {"templateId": "tpl_otp", "data": {"code": "1234"}}
+            {"templateId": "tpl_otp", "templateData": {"code": "1234"}}
         )
         client.templates.create(
             {
@@ -417,7 +417,10 @@ def test_templates_preview_channel_filter_and_sample_data_alias():
 
     assert preview["segments"] == 1
     assert calls[0].method == "POST" and calls[0].url.path == "/api/v1/templates/preview"
-    assert json.loads(calls[0].content) == {"template_id": "tpl_otp", "data": {"code": "1234"}}
+    assert json.loads(calls[0].content) == {
+        "template_id": "tpl_otp",
+        "template_data": {"code": "1234"},
+    }
     assert json.loads(calls[1].content) == {
         "channel": "sms",
         "name": "otp",

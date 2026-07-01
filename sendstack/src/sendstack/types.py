@@ -192,11 +192,6 @@ EmailDefaults = TypedDict("EmailDefaults", {"from": str}, total=False)
 SmsDefaults = TypedDict("SmsDefaults", {"from": str}, total=False)
 
 
-class TemplateReference(TypedDict):
-    id: str
-    variables: NotRequired[Mapping[str, Any]]
-
-
 # ``from`` is a reserved word, so the email request must use functional syntax.
 SendEmailRequest = TypedDict(
     "SendEmailRequest",
@@ -218,7 +213,6 @@ SendEmailRequest = TypedDict(
         "provider_id": str,
         "template_id": str,
         "template_data": Mapping[str, Any],
-        "template": TemplateReference,
         "scheduled_at": str | datetime,
     },
     total=False,
@@ -338,7 +332,7 @@ class PreviewTemplateRequest(TypedDict, total=False):
     html: str
     text: str
     body: str
-    data: Mapping[str, Any]
+    template_data: Mapping[str, Any]
 
 
 class TemplatePreview(TypedDict):

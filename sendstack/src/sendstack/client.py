@@ -950,6 +950,7 @@ def _normalize_template_request(request: Mapping[str, Any]) -> dict[str, Any]:
 def _normalize_template_preview_request(request: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(request)
     _rename(payload, "templateId", "template_id")
+    _rename(payload, "templateData", "template_data")
     return payload
 
 

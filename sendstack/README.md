@@ -407,7 +407,8 @@ client.emails.send(
     {
         "from": "hello@example.com",
         "to": "friend@example.com",
-        "template": {"id": template["id"], "variables": {"firstName": "Amina"}},
+        "template_id": template["id"],
+        "template_data": {"firstName": "Amina"},
     }
 )
 ```
@@ -426,7 +427,7 @@ otp = client.templates.create(
     }
 )
 
-preview = client.templates.preview({"template_id": otp["id"], "data": {"code": "4821"}})
+preview = client.templates.preview({"template_id": otp["id"], "template_data": {"code": "4821"}})
 # {"channel": "sms", "body": "Your code is 4821", "segments": 1, "variables": ["code"], ...}
 ```
 
@@ -626,7 +627,7 @@ Auth, options, and machinery:
 
 Model types (optional typing aids):
 
-- `Recipient`, `SendstackTag`, `TemplateReference`
+- `Recipient`, `SendstackTag`
 - `SendEmailRequest`, `SendEmailResult`, `SendEmailBatchResult`
 - `EmailMessage`, `EmailEvent`, `EmailStatus`
 - `SendSmsRequest`, `SendSmsResult`, `SendSmsBatchResult`
