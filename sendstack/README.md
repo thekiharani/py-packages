@@ -426,6 +426,18 @@ client.templates.publish(template["id"])
 copy = client.templates.duplicate(template["id"], {"name": "Welcome v2"})
 ```
 
+`templates.create(...)` returns a result you can chain `.publish()` on to create
+then publish in one expression (an alternative to the `publish: True` flag above).
+On `AsyncSendstack`, `await` the chain:
+
+```python
+published = client.templates.create(
+    {"name": "order-confirmation", "subject": "Order", "html": "<p>Thanks</p>"}
+).publish()
+
+# async: published = await client.templates.create({...}).publish()
+```
+
 Render any template against sample data with `templates.preview` before
 sending — for SMS the preview returns the `segments` count so you can check cost
 up front:

@@ -391,6 +391,47 @@ def test_templates_resource_including_delete_returns_none():
     assert calls[1].url.params.get("status") == "published"
 
 
+def test_templates_create_publish_chain_sync():
+    client, calls, http = make_sync(
+        [
+            ok_data({"id": "t1", "object": "template"}),
+            ok_data({"id": "t1", "status": "published"}),
+        ]
+    )
+    try:
+        created = client.templates.create({"name": "Welcome", "subject": "Hi"})
+        assert created["id"] == "t1"
+        published = created.publish()
+    finally:
+        http.close()
+    assert published["status"] == "published"
+    assert calls[0].method == "POST" and calls[0].url.path == "/api/v1/templates"
+    assert calls[1].method == "POST" and calls[1].url.path == "/api/v1/templates/t1/publish"
+
+
+def test_templates_create_publish_chain_async():
+    calls: list[httpx.Request] = []
+
+    async def run():
+        http = make_async_http(
+            [
+                ok_data({"id": "t1", "object": "template"}),
+                ok_data({"id": "t1", "object": "template"}),
+                ok_data({"id": "t1", "status": "published"}),
+            ],
+            calls,
+        )
+        async with http, AsyncSendstack("tok", client=http) as client:
+            created = await client.templates.create({"name": "Welcome"})
+            assert created["id"] == "t1"
+            return await client.templates.create({"name": "Welcome"}).publish()
+
+    published = run_async(run)
+    assert published["status"] == "published"
+    assert calls[0].url.path == "/api/v1/templates"
+    assert calls[2].url.path == "/api/v1/templates/t1/publish"
+
+
 def test_templates_preview_channel_filter_and_sample_data_alias():
     client, calls, http = make_sync(
         [

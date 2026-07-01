@@ -760,14 +760,47 @@ class _Domains:
         return self._client.request("POST", f"/domains/{_quote(domain_id)}/verify", options)
 
 
+class _PublishableTemplate(dict):
+    """Created template (sync client). Call ``.publish()`` to publish it in a follow-up
+    request: ``client.templates.create({...}).publish()``."""
+
+    def __init__(self, data: Any, templates: _Templates, options: RequestOptions | None) -> None:
+        super().__init__(data)
+        self._templates = templates
+        self._options = options
+
+    def publish(self, options: RequestOptions | None = None) -> Any:
+        return self._templates.publish(self["id"], options or self._options)
+
+
+class _AsyncPublishableTemplate:
+    """Awaitable created template (async client). ``await client.templates.create({...})``
+    yields the template; ``.publish()`` creates then publishes in one expression."""
+
+    def __init__(self, pending: Any, templates: _Templates, options: RequestOptions | None) -> None:
+        self._pending = pending
+        self._templates = templates
+        self._options = options
+
+    def __await__(self) -> Any:
+        return self._pending.__await__()
+
+    async def publish(self, options: RequestOptions | None = None) -> Any:
+        created = await self._pending
+        return await self._templates.publish(created["id"], options or self._options)
+
+
 class _Templates:
     def __init__(self, client: _Client) -> None:
         self._client = client
 
     def create(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
-        return self._client.request(
+        created = self._client.request(
             "POST", "/templates", _with(options, body=_normalize_template_request(request))
         )
+        if inspect.isawaitable(created):
+            return _AsyncPublishableTemplate(created, self, options)
+        return _PublishableTemplate(created, self, options)
 
     def list(
         self,
