@@ -390,7 +390,14 @@ client.domains.verify(domain["id"])
 
 Templates are channel-aware: pass `"channel": "email"` (the default) or
 `"channel": "sms"`. Email templates use `subject`/`html`/`text`; SMS templates
-use `body`. Filter the list with `client.templates.list(channel="sms")`.
+use `body`. Filter/paginate the list with
+`client.templates.list(channel="sms", status="published", limit=25)`.
+
+Templates start as **drafts** and must be published before they can send. Sends
+render the published snapshot, so editing a live template never changes in-flight
+mail until you publish again. Declared `variables` are typed
+(`string`/`number`/`boolean`) and may carry a `fallback_value`; a missing
+`required` variable with no fallback fails the send with 422.
 
 ```python
 template = client.templates.create(
@@ -399,7 +406,8 @@ template = client.templates.create(
         "slug": "welcome",
         "subject": "Welcome, {{firstName}}",
         "html": "<p>Hello {{firstName}}</p>",
-        "text": "Hello {{firstName}}",
+        "variables": [{"name": "firstName", "type": "string", "required": True}],
+        "publish": True,  # create and publish in one call; omit to keep it a draft
     }
 )
 
@@ -411,6 +419,11 @@ client.emails.send(
         "template_data": {"firstName": "Amina"},
     }
 )
+
+# Edit safely, then publish to go live; or clone into a new draft.
+client.templates.update(template["id"], {"html": "<p>Welcome, {{firstName}}!</p>"})
+client.templates.publish(template["id"])
+copy = client.templates.duplicate(template["id"], {"name": "Welcome v2"})
 ```
 
 Render any template against sample data with `templates.preview` before

@@ -769,9 +769,18 @@ class _Templates:
             "POST", "/templates", _with(options, body=_normalize_template_request(request))
         )
 
-    def list(self, options: RequestOptions | None = None, *, channel: str | None = None) -> Any:
+    def list(
+        self,
+        options: RequestOptions | None = None,
+        *,
+        channel: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Any:
         query = merge_query_params(
-            {"channel": channel}, options.query if options else None
+            {"channel": channel, "status": status, "limit": limit, "cursor": cursor},
+            options.query if options else None,
         )
         return self._client.request("GET", "/templates", _with(options, query=query))
 
@@ -792,6 +801,19 @@ class _Templates:
 
     def remove(self, template_id: str, options: RequestOptions | None = None) -> Any:
         return self._client.request("DELETE", f"/templates/{_quote(template_id)}", options)
+
+    def publish(self, template_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("POST", f"/templates/{_quote(template_id)}/publish", options)
+
+    def duplicate(
+        self,
+        template_id: str,
+        request: Mapping[str, Any] | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        return self._client.request(
+            "POST", f"/templates/{_quote(template_id)}/duplicate", _with(options, body=dict(request or {}))
+        )
 
     def preview(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
         return self._client.request(
@@ -944,6 +966,8 @@ def _normalize_send_sms_batch(
 def _normalize_template_request(request: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(request)
     _rename(payload, "sampleData", "sample_data")
+    _rename(payload, "fromName", "from_name")
+    _rename(payload, "replyTo", "reply_to")
     return payload
 
 

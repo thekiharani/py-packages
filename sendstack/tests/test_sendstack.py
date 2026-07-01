@@ -362,23 +362,32 @@ def test_templates_resource_including_delete_returns_none():
     client, calls, http = make_sync(
         [
             ok_data({"id": "t1"}),
-            ok_data({"data": []}),
+            ok_data({"data": [], "next_cursor": None}),
             ok_data({"id": "t1"}),
             ok_data({"id": "t1", "subject": "New"}),
             httpx.Response(204, content=b""),
+            ok_data({"id": "t1", "status": "published"}),
+            ok_data({"id": "t2", "status": "draft"}),
         ]
     )
     try:
-        client.templates.create({"name": "Welcome", "subject": "Hi"})
-        client.templates.list()
+        client.templates.create({"name": "Welcome", "subject": "Hi", "from": "a@x.com"})
+        client.templates.list(limit=2, status="published")
         client.templates.get("t1")
         client.templates.update("t1", {"subject": "New"})
         removed = client.templates.remove("t1")
+        published = client.templates.publish("t1")
+        duplicated = client.templates.duplicate("t1", {"name": "Copy"})
     finally:
         http.close()
     assert removed is None
     assert calls[3].method == "PATCH" and calls[3].url.path == "/api/v1/templates/t1"
     assert calls[4].method == "DELETE"
+    assert published["status"] == "published"
+    assert calls[5].method == "POST" and calls[5].url.path == "/api/v1/templates/t1/publish"
+    assert duplicated["id"] == "t2"
+    assert calls[6].method == "POST" and calls[6].url.path == "/api/v1/templates/t1/duplicate"
+    assert calls[1].url.params.get("limit") == "2" and calls[1].url.params.get("status") == "published"
 
 
 def test_templates_preview_channel_filter_and_sample_data_alias():

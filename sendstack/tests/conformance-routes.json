@@ -26,6 +26,8 @@
     { "method": "GET", "path": "/api/v1/templates/{id}" },
     { "method": "PATCH", "path": "/api/v1/templates/{id}" },
     { "method": "DELETE", "path": "/api/v1/templates/{id}" },
+    { "method": "POST", "path": "/api/v1/templates/{id}/publish" },
+    { "method": "POST", "path": "/api/v1/templates/{id}/duplicate" },
     { "method": "POST", "path": "/api/v1/webhook-endpoints" },
     { "method": "GET", "path": "/api/v1/webhook-endpoints" },
     { "method": "PATCH", "path": "/api/v1/webhook-endpoints/{id}" },

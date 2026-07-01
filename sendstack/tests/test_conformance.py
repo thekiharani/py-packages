@@ -105,4 +105,4 @@ def test_contract_has_no_duplicate_routes() -> None:
     data = json.loads(FIXTURE.read_text())
     pairs = [(route["method"], route["path"]) for route in data["routes"]]
     assert len(pairs) == len(set(pairs))
-    assert len(pairs) == 33
+    assert len(pairs) == 35

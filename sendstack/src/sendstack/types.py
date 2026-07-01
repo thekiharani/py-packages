@@ -299,30 +299,57 @@ class Domain(TypedDict):
 
 class TemplateVariable(TypedDict, total=False):
     name: str
+    type: str
     required: bool
+    fallback_value: str | float | bool
     description: str
     example: str
 
 
-class CreateTemplateRequest(TypedDict, total=False):
-    channel: TemplateChannel
-    name: str
-    slug: str
-    subject: str
-    html: str
-    text: str
-    body: str
-    variables: Sequence[TemplateVariable]
-    sample_data: Mapping[str, Any]
+# ``from`` is a reserved word, so the create request uses functional syntax.
+CreateTemplateRequest = TypedDict(
+    "CreateTemplateRequest",
+    {
+        "channel": TemplateChannel,
+        "name": str,
+        "slug": str,
+        "subject": str,
+        "html": str,
+        "text": str,
+        "body": str,
+        "variables": Sequence[TemplateVariable],
+        "sample_data": Mapping[str, Any],
+        "from": str,
+        "from_name": str,
+        "reply_to": str,
+        "preheader": str,
+        "category": str,
+        "description": str,
+        "tags": Sequence[str],
+        "publish": bool,
+    },
+    total=False,
+)
 
-
-class UpdateTemplateRequest(TypedDict, total=False):
-    subject: str
-    html: str | None
-    text: str | None
-    body: str
-    variables: Sequence[TemplateVariable]
-    sample_data: Mapping[str, Any]
+UpdateTemplateRequest = TypedDict(
+    "UpdateTemplateRequest",
+    {
+        "subject": str,
+        "html": str | None,
+        "text": str | None,
+        "body": str,
+        "variables": Sequence[TemplateVariable],
+        "sample_data": Mapping[str, Any],
+        "from": str,
+        "from_name": str,
+        "reply_to": str,
+        "preheader": str,
+        "category": str,
+        "description": str,
+        "tags": Sequence[str],
+    },
+    total=False,
+)
 
 
 class PreviewTemplateRequest(TypedDict, total=False):
