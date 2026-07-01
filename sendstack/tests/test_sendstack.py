@@ -387,7 +387,8 @@ def test_templates_resource_including_delete_returns_none():
     assert calls[5].method == "POST" and calls[5].url.path == "/api/v1/templates/t1/publish"
     assert duplicated["id"] == "t2"
     assert calls[6].method == "POST" and calls[6].url.path == "/api/v1/templates/t1/duplicate"
-    assert calls[1].url.params.get("limit") == "2" and calls[1].url.params.get("status") == "published"
+    assert calls[1].url.params.get("limit") == "2"
+    assert calls[1].url.params.get("status") == "published"
 
 
 def test_templates_preview_channel_filter_and_sample_data_alias():

@@ -812,7 +812,9 @@ class _Templates:
         options: RequestOptions | None = None,
     ) -> Any:
         return self._client.request(
-            "POST", f"/templates/{_quote(template_id)}/duplicate", _with(options, body=dict(request or {}))
+            "POST",
+            f"/templates/{_quote(template_id)}/duplicate",
+            _with(options, body=dict(request or {})),
         )
 
     def preview(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
