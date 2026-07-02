@@ -342,17 +342,20 @@ one credit per segment. `sms.send` also accepts the camelCase aliases
 ## WhatsApp
 
 WhatsApp is sent over the official Meta Cloud API. A send is exactly one content
-mode: an approved `template` (business-initiated — the only mode that can open a
-new conversation), a free-form `text`/`media` reply (deliverable only inside the
-24-hour customer service window), or a local `template_id` referencing a saved
-WhatsApp template.
+mode: a saved `template_id` + `template_data` (business-initiated — the
+recommended, cross-channel-consistent way, identical to email and SMS), a
+free-form `text`/`media` reply (deliverable only inside the 24-hour
+customer-service window), or an inline `template` (the advanced escape hatch for
+a Meta-approved template you manage directly in Meta).
 
 ```python
-# Business-initiated: an approved Meta template with ordered body variables.
+# Recommended: render a saved WhatsApp template — same shape as emails.send / sms.send.
+# SendStack maps your named data onto the ordered parameters Meta expects.
 client.whatsapp.send(
     {
         "to": "+254700000000",
-        "template": {"name": "order_update", "language": "en_US", "variables": ["A. Doe", "#1042"]},
+        "template_id": "order_update",
+        "template_data": {"name": "A. Doe", "ref": "#1042"},
     }
 )
 
@@ -364,6 +367,14 @@ client.whatsapp.send(
     {
         "to": "+254700000000",
         "media": {"type": "image", "link": "https://cdn.example.com/receipt.png", "caption": "Receipt"},
+    }
+)
+
+# Advanced: reference a Meta-approved template directly (positional params, WhatsApp-only).
+client.whatsapp.send(
+    {
+        "to": "+254700000000",
+        "template": {"name": "order_update", "language": "en_US", "variables": ["A. Doe", "#1042"]},
     }
 )
 ```
@@ -397,7 +408,10 @@ client.whatsapp_senders.remove(sender["id"])
 
 WhatsApp templates are created through the same `templates.*` methods with
 `{"channel": "whatsapp"}`, using `template_name`, `language`, and
-`body_variables` (camelCase `templateName` / `bodyVariables` also accepted).
+`body_variables` (camelCase `templateName` / `bodyVariables` also accepted). Give
+`body_variables` named `{{ placeholder }}` values in Meta's parameter order (e.g.
+`["{{name}}", "{{ref}}"]`) — those names are what `template_data` fills at send
+time, so a WhatsApp template is authored just like an email or SMS one.
 
 ## Attachments
 
