@@ -7,13 +7,15 @@ asynchronous client (`AsyncSendstack`) covering the SendStack developer API.
 
 Use it for:
 
-- transactional and scheduled email and SMS
-- batch email and SMS
+- transactional and scheduled email, SMS, and WhatsApp
+- batch email, SMS, and WhatsApp
 - reusable attachment uploads
 - sending domains
-- email and SMS templates (with rendered previews)
+- WhatsApp Business senders and SMS sender-ID provisioning
+- email, SMS, and WhatsApp templates (with rendered previews)
 - webhook endpoints and webhook event retries
 - suppression lists
+- billing: credits, checkout, and payment/purchase history
 
 Python `>=3.11` is required.
 
@@ -164,6 +166,18 @@ and `RequestOptions(authenticated=False)` to strip auth for a single call.
 | `sms.events(message_id, options=None)` | `GET /sms/{id}/events` | `CursorPage` |
 | `sms.cancel(message_id, options=None)` | `POST /sms/{id}/cancel` | `SmsMessage` |
 | `sms.requeue(message_id, options=None)` | `POST /sms/{id}/requeue` | `SmsMessage` |
+| `whatsapp.send(payload, options=None)` | `POST /whatsapp` | `SendWhatsAppResult` |
+| `whatsapp.send_batch(payload, options=None)` | `POST /whatsapp/batch` | `SendWhatsAppBatchResult` |
+| `whatsapp.list(options=None, *, limit=None, cursor=None, status=None)` | `GET /whatsapp` | `CursorPage` |
+| `whatsapp.get(message_id, options=None)` | `GET /whatsapp/{id}` | `WhatsAppMessage` |
+| `whatsapp.events(message_id, options=None)` | `GET /whatsapp/{id}/events` | `CursorPage` |
+| `whatsapp.cancel(message_id, options=None)` | `POST /whatsapp/{id}/cancel` | `WhatsAppMessage` |
+| `whatsapp.requeue(message_id, options=None)` | `POST /whatsapp/{id}/requeue` | `WhatsAppMessage` |
+| `whatsapp_senders.list(options=None)` | `GET /whatsapp/senders` | `CursorPage` |
+| `whatsapp_senders.create(payload, options=None)` | `POST /whatsapp/senders` | `WhatsAppSenderRef` |
+| `whatsapp_senders.get(sender_id, options=None)` | `GET /whatsapp/senders/{id}` | `WhatsAppSender` |
+| `whatsapp_senders.set_default(sender_id, options=None)` | `POST /whatsapp/senders/{id}/default` | `WhatsAppSenderRef` |
+| `whatsapp_senders.remove(sender_id, options=None)` | `DELETE /whatsapp/senders/{id}` | `None` |
 | `domains.create(payload, options=None)` | `POST /domains` | `Domain` |
 | `domains.list(options=None)` | `GET /domains` | `CursorPage` |
 | `domains.get(domain_id, options=None)` | `GET /domains/{id}` | `Domain` |
@@ -182,10 +196,26 @@ and `RequestOptions(authenticated=False)` to strip auth for a single call.
 | `suppressions.add(payload, options=None)` | `POST /suppressions` | `CreateSuppressionResult` |
 | `suppressions.list(options=None)` | `GET /suppressions` | `CursorPage` |
 | `suppressions.remove(recipient, options=None)` | `DELETE /suppressions/{recipient}` | `None` |
+| `senders.options(options=None)` | `GET /sms/senders/options` | `SenderIdOptions` |
+| `senders.list(options=None)` | `GET /sms/senders` | `SendstackList` |
+| `senders.create(payload, options=None)` | `POST /sms/senders` | `SenderIdRequestRef` |
+| `senders.get(sender_id, options=None)` | `GET /sms/senders/{id}` | `SenderIdRequest` |
+| `senders.upload_kyc(sender_id, payload, options=None)` | `POST /sms/senders/{id}/kyc` | `SenderIdRequestRef` |
+| `senders.pay(sender_id, payload, options=None)` | `POST /sms/senders/{id}/pay` | `PaySenderIdResult` |
+| `senders.authorization_letter(options=None)` | `GET /sms/authorization-letter` | file bytes |
+| `billing.credits(options=None, *, channel=None)` | `GET /billing/credits` | `CreditBalance` |
+| `billing.products(options=None)` | `GET /billing/products` | `SendstackList` |
+| `billing.checkout(payload, options=None)` | `POST /billing/checkout` | `CheckoutResult` |
+| `billing.payments(options=None, *, limit=None)` | `GET /billing/payments` | `SendstackList` |
+| `billing.payment(payment_id, options=None)` | `GET /billing/payments/{id}` | `Payment` |
+| `billing.purchases(options=None)` | `GET /billing/purchases` | `SendstackList` |
 
-`webhook_events` is also available as `webhookEvents`, and `emails.send_batch`
-/ `sms.send_batch` as `emails.sendBatch` / `sms.sendBatch`, as convenience
-camelCase aliases.
+`webhook_events` is also available as `webhookEvents`, `whatsapp_senders` as
+`whatsappSenders`, `emails.send_batch` / `sms.send_batch` / `whatsapp.send_batch`
+as `emails.sendBatch` / `sms.sendBatch` / `whatsapp.sendBatch`,
+`whatsapp_senders.set_default` as `whatsapp_senders.setDefault`, and
+`senders.upload_kyc` / `senders.authorization_letter` as `senders.uploadKyc` /
+`senders.authorizationLetter`, as convenience camelCase aliases.
 
 Methods take a plain `dict` payload and return plain `dict` responses (the
 `{"ok": true, "data": ...}` envelope is unwrapped for you). The exported model
@@ -255,15 +285,16 @@ client.emails.send(
 
 ## Per-channel defaults
 
-`from` (email) and `from` (SMS) are usually constant, so set them once on
-the client. Each send fills the default in when the call omits it, and any
-per-send value overrides it:
+`from` (email), `from` (SMS) and `from` (WhatsApp) are usually constant, so set
+them once on the client. Each send fills the default in when the call omits it,
+and any per-send value overrides it:
 
 ```python
 client = Sendstack(
     "mlr_live_…",
     emails={"from": "Noria <hello@example.com>"},
     sms={"from": "NORIA"},
+    whatsapp={"from": "+254711000000"},
 )
 
 client.emails.send({"to": "customer@example.com", "subject": "Welcome", "html": "<p>Hi</p>"})  # from applied
@@ -307,6 +338,66 @@ client.sms.send_batch(
 one credit per segment. `sms.send` also accepts the camelCase aliases
 `providerId`, `templateId`, `templateData`, and `scheduledAt`
 (`scheduled_at` accepts a `datetime`, serialized to ISO-8601).
+
+## WhatsApp
+
+WhatsApp is sent over the official Meta Cloud API. A send is exactly one content
+mode: an approved `template` (business-initiated — the only mode that can open a
+new conversation), a free-form `text`/`media` reply (deliverable only inside the
+24-hour customer service window), or a local `template_id` referencing a saved
+WhatsApp template.
+
+```python
+# Business-initiated: an approved Meta template with ordered body variables.
+client.whatsapp.send(
+    {
+        "to": "+254700000000",
+        "template": {"name": "order_update", "language": "en_US", "variables": ["A. Doe", "#1042"]},
+    }
+)
+
+# Free-form reply inside the 24h window (uses the client default sender).
+client.whatsapp.send({"to": "+254700000000", "text": "Thanks — your order is on the way."})
+
+# Media reply.
+client.whatsapp.send(
+    {
+        "to": "+254700000000",
+        "media": {"type": "image", "link": "https://cdn.example.com/receipt.png", "caption": "Receipt"},
+    }
+)
+```
+
+Batch sends accept either a list or `{"messages": [...]}`. `whatsapp.list`,
+`whatsapp.get`, `whatsapp.events`, `whatsapp.cancel`, and `whatsapp.requeue`
+mirror the `emails.*`/`sms.*` counterparts, and `whatsapp.send` accepts the same
+camelCase aliases (`providerId`, `templateId`, `templateData`, `scheduledAt`).
+Only template (business-initiated) messages consume a credit; session replies
+inside the 24-hour window are free.
+
+Register and manage the WhatsApp Business numbers you send from with
+`whatsapp_senders`. The Cloud API access token is stored encrypted and never
+returned on reads:
+
+```python
+sender = client.whatsapp_senders.create(
+    {
+        "phoneNumberId": "109876543210",
+        "wabaId": "220011223344",
+        "accessToken": "EAAG…",   # stored encrypted, never echoed back
+        "displayName": "Acme Support",
+        "isDefault": True,
+    }
+)
+
+client.whatsapp_senders.list()
+client.whatsapp_senders.set_default(sender["id"])
+client.whatsapp_senders.remove(sender["id"])
+```
+
+WhatsApp templates are created through the same `templates.*` methods with
+`{"channel": "whatsapp"}`, using `template_name`, `language`, and
+`body_variables` (camelCase `templateName` / `bodyVariables` also accepted).
 
 ## Attachments
 
@@ -479,18 +570,76 @@ suppressions = client.suppressions.list()
 client.suppressions.remove("bad@example.com")
 ```
 
+## SMS sender IDs
+
+`senders.*` drives the alphanumeric SMS sender-ID provisioning flow: read the fee,
+networks, and KYC requirements, file a request, upload the signed authorization
+letter and KYC documents, then pay the one-time fee (an M-Pesa STK push).
+
+```python
+opts = client.senders.options()  # fee, networks, required KYC docs per entity type
+
+request = client.senders.create(
+    {
+        "requested_id": "ACME",
+        "entity_type": "limited_company",
+        "networks": ["safaricom", "airtel"],
+    }
+)
+
+client.senders.upload_kyc(
+    request["id"],
+    {
+        "documents": [
+            {"slug": "cert_of_incorporation", "filename": "cert.pdf", "content_base64": cert_pdf_b64}
+        ],
+        "auth_letter": {"filename": "auth.pdf", "content_base64": auth_pdf_b64},
+    },
+)
+
+client.senders.pay(request["id"], {"phone": "+254700000000"})
+
+client.senders.list()
+client.senders.get(request["id"])
+```
+
+`senders.authorization_letter()` downloads the blank authorization-letter template
+(a binary body, returned as-is).
+
+## Billing
+
+`billing.*` covers the credit/wallet catalog, checkout, and payment/purchase history.
+
+```python
+email = client.billing.credits()                 # default channel: email
+sms = client.billing.credits(channel="sms")      # {"remaining": ..., "unlimited": ..., "active_packs": ...}
+
+products = client.billing.products()
+checkout = client.billing.checkout({"product_code": "starter_10k", "phone": "+254700000000"})
+# method defaults to "mpesa"; pass "method": "wallet" to settle from the prepaid wallet.
+
+payments = client.billing.payments(limit=20)
+payment = client.billing.payment("pay_123")  # polls the provider if a pending payment is stale
+purchases = client.billing.purchases()
+```
+
 ## Field Aliases
 
 Python users write idiomatic snake_case, which is exactly the wire format for
-email, SMS, attachment, template, webhook, and domain fields — `reply_to`,
-`track_opens`, `track_clicks`, `provider_id`, `template_id`,
+email, SMS, WhatsApp, attachment, template, webhook, and domain fields —
+`reply_to`, `track_opens`, `track_clicks`, `provider_id`, `template_id`,
 `template_data`, `scheduled_at`, `sample_data`, `content_base64`,
 `content_type`, `attachment_id`, `content_id`, `event_types`,
-`custom_return_path`. No translation needed.
+`custom_return_path`, `template_name`, `body_variables`, `phone_number_id`,
+`waba_id`, `access_token`, `display_name`, `is_default`, `requested_id`,
+`entity_type`, `auth_letter`, `product_code`. No translation needed.
 
 The camelCase aliases (`replyTo`, `trackOpens`,
 `trackClicks`, `providerId`, `templateId`, `templateData`,
-`scheduledAt`, `sampleData`, `contentBase64`, `attachmentId`, `eventTypes`, …)
+`scheduledAt`, `sampleData`, `contentBase64`, `attachmentId`, `eventTypes`,
+`templateName`, `bodyVariables`, `phoneNumberId`, `wabaId`, `accessToken`,
+`displayName`, `isDefault`, `requestedId`, `entityType`, `authLetter`,
+`productCode`, …)
 are also accepted and converted to the wire field names. Everything else is
 passed through unchanged, so the SDK stays forward-compatible with new API
 fields.
@@ -657,16 +806,23 @@ Model types (optional typing aids):
 - `EmailMessage`, `EmailEvent`, `EmailStatus`
 - `SendSmsRequest`, `SendSmsResult`, `SendSmsBatchResult`
 - `SmsMessage`, `SmsEvent`, `SmsStatus`
+- `SendWhatsAppRequest`, `SendWhatsAppResult`, `SendWhatsAppBatchResult`
+- `WhatsAppMessage`, `WhatsAppEvent`, `WhatsAppStatus`
+- `WhatsAppTemplateRef`, `WhatsAppTemplateCategory`, `WhatsAppMediaRef`
+- `CreateWhatsAppSenderRequest`, `WhatsAppSender`, `WhatsAppSenderRef`
 - `UploadAttachmentRequest`, `UploadedAttachment`
 - `CreateDomainRequest`, `Domain`, `DomainRegion`, `DomainTlsPolicy`, `DomainCapability`
 - `CreateTemplateRequest`, `UpdateTemplateRequest`, `EmailTemplate`
 - `TemplateChannel`, `TemplateVariable`, `PreviewTemplateRequest`, `TemplatePreview`
-- `EmailDefaults`, `SmsDefaults`
+- `EmailDefaults`, `SmsDefaults`, `WhatsAppDefaults`
 - `CreateWebhookEndpointRequest`, `UpdateWebhookEndpointRequest`, `WebhookEndpoint`
 - `WebhookEventType`, `KnownWebhookEvent`
 - `RetryWebhookEventResult`
 - `CreateSuppressionRequest`, `CreateSuppressionResult`, `Suppression`, `SuppressionReason`
-- `CursorPage`
+- `CursorPage`, `SendstackList`
+- `CreateSenderIdRequest`, `UploadSenderKycRequest`, `PaySenderIdRequest`, `PaySenderIdResult`
+- `SenderIdRequest`, `SenderIdRequestRef`, `SenderIdOptions`, `SenderIdNetwork`, `SenderEntityType`
+- `CreditBalance`, `CreditChannel`, `BillingProduct`, `CheckoutRequest`, `CheckoutResult`, `Payment`, `Purchase`
 
 ## Development
 

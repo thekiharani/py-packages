@@ -1,6 +1,6 @@
 """Sync and async SendStack clients.
 
-Exposes the eight bearer-callable resource groups plus a low-level
+Exposes the bearer-callable resource groups plus a low-level
 ``request(...)`` escape hatch, via a synchronous :class:`Sendstack` and an
 asynchronous :class:`AsyncSendstack`, both backed by ``httpx``, with
 context-manager support.
@@ -67,6 +67,7 @@ class _BaseClient:
         base_url: str = DEFAULT_BASE_URL,
         emails: Mapping[str, str] | None = None,
         sms: Mapping[str, str] | None = None,
+        whatsapp: Mapping[str, str] | None = None,
         timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS,
         headers: Mapping[str, str] | httpx.Headers | None = None,
         query: Mapping[str, object] | None = None,
@@ -81,6 +82,7 @@ class _BaseClient:
         # Per-channel defaults, applied to a send unless the call overrides them.
         self.email_from = _default_value((emails or {}).get("from"))
         self.sms_sender_id = _default_value((sms or {}).get("from"))
+        self.whatsapp_from = _default_value((whatsapp or {}).get("from"))
         self.base_url = normalize_base_url(base_url)
         self.timeout_seconds = timeout_seconds
         self._default_headers = headers
@@ -259,6 +261,7 @@ class Sendstack(_BaseClient):
         base_url: str = DEFAULT_BASE_URL,
         emails: Mapping[str, str] | None = None,
         sms: Mapping[str, str] | None = None,
+        whatsapp: Mapping[str, str] | None = None,
         client: httpx.Client | Any | None = None,
         timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS,
         headers: Mapping[str, str] | httpx.Headers | None = None,
@@ -274,6 +277,7 @@ class Sendstack(_BaseClient):
             base_url=base_url,
             emails=emails,
             sms=sms,
+            whatsapp=whatsapp,
             timeout_seconds=timeout_seconds,
             headers=headers,
             query=query,
@@ -442,6 +446,7 @@ class AsyncSendstack(_BaseClient):
         base_url: str = DEFAULT_BASE_URL,
         emails: Mapping[str, str] | None = None,
         sms: Mapping[str, str] | None = None,
+        whatsapp: Mapping[str, str] | None = None,
         client: httpx.AsyncClient | Any | None = None,
         timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS,
         headers: Mapping[str, str] | httpx.Headers | None = None,
@@ -457,6 +462,7 @@ class AsyncSendstack(_BaseClient):
             base_url=base_url,
             emails=emails,
             sms=sms,
+            whatsapp=whatsapp,
             timeout_seconds=timeout_seconds,
             headers=headers,
             query=query,
@@ -621,6 +627,11 @@ def _attach_resources(client: _Client) -> None:
     client.attachments = _Attachments(client)
     client.emails = _Emails(client)
     client.sms = _Sms(client)
+    client.whatsapp = _WhatsApp(client)
+    client.whatsapp_senders = _WhatsAppSenders(client)
+    client.whatsappSenders = client.whatsapp_senders  # camelCase alias
+    client.senders = _Senders(client)
+    client.billing = _Billing(client)
     client.domains = _Domains(client)
     client.templates = _Templates(client)
     client.webhooks = _Webhooks(client)
@@ -739,6 +750,149 @@ class _Sms:
 
     def requeue(self, message_id: str, options: RequestOptions | None = None) -> Any:
         return self._client.request("POST", f"/sms/{_quote(message_id)}/requeue", options)
+
+
+class _WhatsApp:
+    def __init__(self, client: _Client) -> None:
+        self._client = client
+        self.sendBatch = self.send_batch  # camelCase alias
+
+    def send(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
+        body = _normalize_send_whatsapp_request(request, self._client.whatsapp_from)
+        return self._client.request("POST", "/whatsapp", _with(options, body=body))
+
+    def send_batch(
+        self,
+        request: Sequence[Mapping[str, Any]] | Mapping[str, Any],
+        options: RequestOptions | None = None,
+    ) -> Any:
+        body = _normalize_send_whatsapp_batch(request, self._client.whatsapp_from)
+        return self._client.request("POST", "/whatsapp/batch", _with(options, body=body))
+
+    def list(
+        self,
+        options: RequestOptions | None = None,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        status: str | None = None,
+    ) -> Any:
+        query = merge_query_params(
+            {"limit": limit, "cursor": cursor, "status": status},
+            options.query if options else None,
+        )
+        return self._client.request("GET", "/whatsapp", _with(options, query=query))
+
+    def get(self, message_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", f"/whatsapp/{_quote(message_id)}", options)
+
+    def events(self, message_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", f"/whatsapp/{_quote(message_id)}/events", options)
+
+    def cancel(self, message_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("POST", f"/whatsapp/{_quote(message_id)}/cancel", options)
+
+    def requeue(self, message_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("POST", f"/whatsapp/{_quote(message_id)}/requeue", options)
+
+
+class _WhatsAppSenders:
+    def __init__(self, client: _Client) -> None:
+        self._client = client
+        self.setDefault = self.set_default  # camelCase alias
+
+    def list(self, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", "/whatsapp/senders", options)
+
+    def create(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
+        return self._client.request(
+            "POST",
+            "/whatsapp/senders",
+            _with(options, body=_normalize_create_whatsapp_sender_request(request)),
+        )
+
+    def get(self, sender_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", f"/whatsapp/senders/{_quote(sender_id)}", options)
+
+    def set_default(self, sender_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request(
+            "POST", f"/whatsapp/senders/{_quote(sender_id)}/default", options
+        )
+
+    def remove(self, sender_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("DELETE", f"/whatsapp/senders/{_quote(sender_id)}", options)
+
+
+class _Senders:
+    def __init__(self, client: _Client) -> None:
+        self._client = client
+        self.uploadKyc = self.upload_kyc  # camelCase alias
+        self.authorizationLetter = self.authorization_letter  # camelCase alias
+
+    def options(self, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", "/sms/senders/options", options)
+
+    def list(self, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", "/sms/senders", options)
+
+    def create(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
+        body = _normalize_create_sender_id_request(request)
+        return self._client.request("POST", "/sms/senders", _with(options, body=body))
+
+    def get(self, sender_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", f"/sms/senders/{_quote(sender_id)}", options)
+
+    def upload_kyc(
+        self,
+        sender_id: str,
+        request: Mapping[str, Any],
+        options: RequestOptions | None = None,
+    ) -> Any:
+        return self._client.request(
+            "POST",
+            f"/sms/senders/{_quote(sender_id)}/kyc",
+            _with(options, body=_normalize_upload_sender_kyc_request(request)),
+        )
+
+    def pay(
+        self,
+        sender_id: str,
+        request: Mapping[str, Any],
+        options: RequestOptions | None = None,
+    ) -> Any:
+        return self._client.request(
+            "POST", f"/sms/senders/{_quote(sender_id)}/pay", _with(options, body=dict(request))
+        )
+
+    def authorization_letter(self, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", "/sms/authorization-letter", options)
+
+
+class _Billing:
+    def __init__(self, client: _Client) -> None:
+        self._client = client
+
+    def credits(self, options: RequestOptions | None = None, *, channel: str | None = None) -> Any:
+        query = merge_query_params({"channel": channel}, options.query if options else None)
+        return self._client.request("GET", "/billing/credits", _with(options, query=query))
+
+    def products(self, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", "/billing/products", options)
+
+    def checkout(self, request: Mapping[str, Any], options: RequestOptions | None = None) -> Any:
+        return self._client.request(
+            "POST", "/billing/checkout", _with(options, body=_normalize_checkout_request(request))
+        )
+
+    def payments(self, options: RequestOptions | None = None, *, limit: int | None = None) -> Any:
+        query = merge_query_params({"limit": limit}, options.query if options else None)
+        return self._client.request("GET", "/billing/payments", _with(options, query=query))
+
+    def payment(self, payment_id: str, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", f"/billing/payments/{_quote(payment_id)}", options)
+
+    def purchases(self, options: RequestOptions | None = None) -> Any:
+        return self._client.request("GET", "/billing/purchases", options)
 
 
 class _Domains:
@@ -998,11 +1152,90 @@ def _normalize_send_sms_batch(
     return [_normalize_send_sms_request(m, default_sender_id) for m in request]
 
 
+def _normalize_send_whatsapp_request(
+    request: Mapping[str, Any], default_from: str | None = None
+) -> dict[str, Any]:
+    payload = dict(request)
+    _rename(payload, "providerId", "provider_id")
+    _rename(payload, "templateId", "template_id")
+    _rename(payload, "templateData", "template_data")
+    _rename(payload, "scheduledAt", "scheduled_at")
+
+    scheduled_at = payload.get("scheduled_at")
+    if isinstance(scheduled_at, datetime):
+        payload["scheduled_at"] = serialize_datetime(scheduled_at)
+
+    if default_from is not None and payload.get("from") is None:
+        payload["from"] = default_from
+    return payload
+
+
+def _normalize_send_whatsapp_batch(
+    request: Sequence[Mapping[str, Any]] | Mapping[str, Any],
+    default_from: str | None = None,
+) -> dict[str, Any] | list[dict[str, Any]]:
+    if isinstance(request, Mapping):
+        messages = request.get("messages", [])
+        return {
+            "messages": [_normalize_send_whatsapp_request(m, default_from) for m in messages]
+        }
+    return [_normalize_send_whatsapp_request(m, default_from) for m in request]
+
+
+def _normalize_create_whatsapp_sender_request(request: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(request)
+    _rename(payload, "phoneNumberId", "phone_number_id")
+    _rename(payload, "wabaId", "waba_id")
+    _rename(payload, "accessToken", "access_token")
+    _rename(payload, "displayName", "display_name")
+    _rename(payload, "isDefault", "is_default")
+    return payload
+
+
+def _normalize_create_sender_id_request(request: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(request)
+    _rename(payload, "requestedId", "requested_id")
+    _rename(payload, "entityType", "entity_type")
+    return payload
+
+
+def _normalize_kyc_file(file: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(file)
+    _rename(payload, "contentBase64", "content_base64")
+    _rename(payload, "contentType", "content_type")
+    return payload
+
+
+def _normalize_upload_sender_kyc_request(request: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(request)
+    _rename(payload, "authLetter", "auth_letter")
+
+    documents = payload.get("documents")
+    if isinstance(documents, Sequence) and not isinstance(documents, (str, bytes, bytearray)):
+        payload["documents"] = [
+            _normalize_kyc_file(doc) if isinstance(doc, Mapping) else doc for doc in documents
+        ]
+
+    auth_letter = payload.get("auth_letter")
+    if isinstance(auth_letter, Mapping):
+        payload["auth_letter"] = _normalize_kyc_file(auth_letter)
+
+    return payload
+
+
+def _normalize_checkout_request(request: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(request)
+    _rename(payload, "productCode", "product_code")
+    return payload
+
+
 def _normalize_template_request(request: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(request)
     _rename(payload, "sampleData", "sample_data")
     _rename(payload, "fromName", "from_name")
     _rename(payload, "replyTo", "reply_to")
+    _rename(payload, "templateName", "template_name")
+    _rename(payload, "bodyVariables", "body_variables")
     return payload
 
 

@@ -156,7 +156,9 @@ class RequestOptions:
 
 EmailStatus = Literal["queued", "sending", "sent", "failed", "canceled"]
 SmsStatus = EmailStatus
-TemplateChannel = Literal["email", "sms"]
+WhatsAppStatus = EmailStatus
+TemplateChannel = Literal["email", "sms", "whatsapp"]
+WhatsAppTemplateCategory = Literal["marketing", "utility", "authentication"]
 DomainRegion = Literal["af-south-1", "us-east-1", "eu-central-1"]
 DomainTlsPolicy = Literal["opportunistic", "enforced"]
 DomainCapability = Literal["enabled", "disabled"]
@@ -317,6 +319,9 @@ CreateTemplateRequest = TypedDict(
         "html": str,
         "text": str,
         "body": str,
+        "template_name": str,
+        "language": str,
+        "body_variables": Sequence[str],
         "variables": Sequence[TemplateVariable],
         "sample_data": Mapping[str, Any],
         "from": str,
@@ -338,6 +343,9 @@ UpdateTemplateRequest = TypedDict(
         "html": str | None,
         "text": str | None,
         "body": str,
+        "template_name": str,
+        "language": str,
+        "body_variables": Sequence[str],
         "variables": Sequence[TemplateVariable],
         "sample_data": Mapping[str, Any],
         "from": str,
@@ -431,6 +439,268 @@ class SmsEvent(TypedDict):
     id: str
     type: str
     occurred_at: NotRequired[str]
+
+
+class WhatsAppTemplateRef(TypedDict):
+    name: str
+    language: str
+    variables: NotRequired[Sequence[str]]
+    category: NotRequired[WhatsAppTemplateCategory]
+
+
+class WhatsAppMediaRef(TypedDict):
+    type: Literal["image", "document", "video"]
+    link: str
+    caption: NotRequired[str]
+    filename: NotRequired[str]
+
+
+# ``from`` is a reserved word, so the WhatsApp request must use functional syntax.
+# A send is exactly one content mode: an approved ``template`` (business-initiated), a
+# free-form ``text``/``media`` reply (deliverable only inside the 24h window), or a
+# local ``template_id`` reference.
+SendWhatsAppRequest = TypedDict(
+    "SendWhatsAppRequest",
+    {
+        "to": str,
+        "from": str,
+        "template": WhatsAppTemplateRef,
+        "text": str,
+        "media": WhatsAppMediaRef,
+        "provider_id": str,
+        "metadata": Mapping[str, str],
+        "template_id": str,
+        "template_data": Mapping[str, Any],
+        "scheduled_at": str | datetime,
+    },
+    total=False,
+)
+
+
+class SendWhatsAppResult(TypedDict):
+    id: str
+    status: str
+
+
+class SendWhatsAppBatchResult(TypedDict):
+    batch_id: str
+    data: list[SendWhatsAppResult]
+
+
+class WhatsAppMessage(TypedDict):
+    id: str
+    status: str
+    to: str
+    kind: str
+    template_name: str | None
+    language: str | None
+    text: str | None
+    sender: str | None
+    sender_id: str | None
+    provider_id: str | None
+    provider_message_id: str | None
+    attempts: int
+    scheduled_at: str | None
+    sent_at: str | None
+    last_error: str | None
+    metadata: Mapping[str, Any]
+    created_at: str
+
+
+class WhatsAppEvent(TypedDict):
+    id: str
+    type: str
+    occurred_at: NotRequired[str]
+
+
+# The encrypted ``access_token`` is stored server-side and never returned on reads.
+class CreateWhatsAppSenderRequest(TypedDict, total=False):
+    phone_number_id: str
+    waba_id: str
+    access_token: str
+    display_name: str
+    identifier: str
+    is_default: bool
+
+
+class WhatsAppSender(TypedDict):
+    id: str
+    identifier: str
+    display_name: str | None
+    status: str
+    is_default: bool
+    phone_number_id: str | None
+    waba_id: str | None
+    verified_name: str | None
+    quality_rating: str | None
+    has_own_token: bool
+    created_at: str
+    updated_at: str
+
+
+class WhatsAppSenderRef(TypedDict):
+    id: str
+    object: str
+
+
+# ``from`` is a reserved word, so the WhatsApp defaults must use functional syntax.
+WhatsAppDefaults = TypedDict("WhatsAppDefaults", {"from": str}, total=False)
+
+
+SenderIdNetwork = Literal["safaricom", "airtel", "telkom"]
+SenderEntityType = Literal["limited_company", "sole_proprietor"]
+
+
+class CreateSenderIdRequest(TypedDict, total=False):
+    requested_id: str
+    entity_type: SenderEntityType
+    networks: Sequence[SenderIdNetwork]
+
+
+class SenderKycDocument(TypedDict, total=False):
+    slug: str
+    filename: str
+    content_base64: str
+    content_type: str
+
+
+class SenderAuthLetter(TypedDict, total=False):
+    filename: str
+    content_base64: str
+    content_type: str
+
+
+class UploadSenderKycRequest(TypedDict, total=False):
+    documents: Sequence[SenderKycDocument]
+    auth_letter: SenderAuthLetter
+
+
+class PaySenderIdRequest(TypedDict):
+    phone: str
+
+
+class PaySenderIdResult(TypedDict):
+    payment_id: str
+    status: str
+    customer_message: str | None
+
+
+class SenderIdNetworkState(TypedDict, total=False):
+    status: str
+    fee_cents: int
+    approved_at: str | None
+    failure_reason: str | None
+
+
+class SenderIdRequest(TypedDict):
+    id: str
+    requested_id: str
+    entity_type: str
+    status: str
+    networks: Mapping[str, SenderIdNetworkState]
+    total_cents: int
+    total_kes: float | None
+    missing_kyc: list[str]
+    kyc_documents: list[str]
+    has_auth_letter: bool
+    submitted_via: str
+    sender_id: str | None
+    review_notes: str | None
+    created_at: str
+    updated_at: str
+
+
+class SenderIdRequestRef(TypedDict):
+    id: str
+    object: str
+
+
+class SenderIdOptions(TypedDict):
+    fee_cents: int
+    fee_kes: float
+    total_schedule_cents: list[int]
+    total_schedule_kes: list[float]
+    networks: list[Mapping[str, str]]
+    entity_types: list[Mapping[str, Any]]
+
+
+CreditChannel = Literal["email", "sms", "whatsapp"]
+
+
+class CreditBalance(TypedDict):
+    remaining: int | None
+    unlimited: bool
+    active_packs: int
+
+
+class BillingProduct(TypedDict):
+    code: str
+    name: str
+    description: str | None
+    kind: str
+    tier: str | None
+    currency: str
+    price_cents: int
+    price_kes: float | None
+    billing_period: str
+    setup_fee_cents: int | None
+    setup_fee_kes: float | None
+    email_credits: int | None
+    sms_credits: int | None
+    validity_days: int | None
+    limits: Mapping[str, int | None]
+    features: Mapping[str, Any]
+    support_level: str
+
+
+class CheckoutRequest(TypedDict, total=False):
+    product_code: str
+    phone: str
+    method: Literal["mpesa", "wallet"]
+
+
+class CheckoutResult(TypedDict, total=False):
+    payment_id: str | None
+    status: str
+    purchase_id: str | None
+    balance_cents: int | None
+    customer_message: str | None
+
+
+class Payment(TypedDict):
+    id: str
+    product_id: str | None
+    purpose: str
+    purchase_id: str | None
+    status: str
+    method: str
+    currency: str
+    amount_cents: int
+    amount_kes: float | None
+    payer_phone: str | None
+    provider_txn_code: str | None
+    failure_reason: str | None
+    paid_at: str | None
+    created_at: str
+
+
+class Purchase(TypedDict):
+    id: str
+    kind: str
+    status: str
+    quantity: int
+    amount_cents: int
+    amount_kes: float | None
+    email_credits_granted: int | None
+    email_credits_remaining: int | None
+    starts_at: str
+    expires_at: str | None
+    payment_method: str | None
+    created_at: str
+
+
+class SendstackList(TypedDict):
+    data: list[Any]
 
 
 class CreateWebhookEndpointRequest(TypedDict, total=False):

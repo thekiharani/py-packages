@@ -329,6 +329,270 @@ def test_sms_without_client_sender_omits_it_and_list_get_events_cancel_requeue()
 
 
 # --------------------------------------------------------------------------- #
+# WhatsApp
+# --------------------------------------------------------------------------- #
+
+
+def test_whatsapp_aliases_default_and_override():
+    client, calls, http = make_sync(
+        [
+            ok_data({"id": "wa_1", "status": "queued"}),
+            ok_data({"id": "wa_2", "status": "queued"}),
+            ok_data({"batch_id": "b1", "data": []}),
+            ok_data({"batch_id": "b2", "data": []}),
+        ],
+        whatsapp={"from": "+254711000000"},
+    )
+    try:
+        client.whatsapp.send(
+            {
+                "to": "+254700000000",
+                "template": {
+                    "name": "order_update",
+                    "language": "en_US",
+                    "variables": ["A. Doe", "#1042"],
+                },
+                "providerId": "prov_1",
+                "templateId": "tpl_wa",
+                "templateData": {"name": "A. Doe"},
+                "scheduledAt": datetime(2026, 1, 1, tzinfo=UTC),
+            }
+        )
+        client.whatsapp.send({"to": "+254700000001", "text": "Hi", "from": "+254799000000"})
+        client.whatsapp.send_batch(
+            {
+                "messages": [
+                    {"to": "+254700000002", "text": "One"},
+                    {"to": "+254700000003", "text": "Two", "from": "+254722000000"},
+                ]
+            }
+        )
+        client.whatsapp.sendBatch([{"to": "+254700000004", "text": "Solo"}])
+    finally:
+        http.close()
+
+    assert client.whatsapp_from == "+254711000000"
+    assert json.loads(calls[0].content) == {
+        "to": "+254700000000",
+        "template": {
+            "name": "order_update",
+            "language": "en_US",
+            "variables": ["A. Doe", "#1042"],
+        },
+        "provider_id": "prov_1",
+        "template_id": "tpl_wa",
+        "template_data": {"name": "A. Doe"},
+        "scheduled_at": "2026-01-01T00:00:00.000Z",
+        "from": "+254711000000",
+    }
+    assert calls[0].url.path == "/api/v1/whatsapp"
+    assert json.loads(calls[1].content)["from"] == "+254799000000"
+    assert json.loads(calls[2].content) == {
+        "messages": [
+            {"to": "+254700000002", "text": "One", "from": "+254711000000"},
+            {"to": "+254700000003", "text": "Two", "from": "+254722000000"},
+        ]
+    }
+    assert calls[2].url.path == "/api/v1/whatsapp/batch"
+    assert json.loads(calls[3].content) == [
+        {"to": "+254700000004", "text": "Solo", "from": "+254711000000"}
+    ]
+
+
+def test_whatsapp_without_default_and_list_get_events_cancel_requeue():
+    client, calls, http = make_sync(
+        [
+            ok_data({"id": "wa_1", "status": "queued"}),
+            ok_data({"data": [], "next_cursor": None}),
+            ok_data({"id": "wa_1"}),
+            ok_data({"data": [{"id": "e1", "type": "whatsapp.delivered"}]}),
+            ok_data({"id": "wa_1", "object": "whatsapp"}),
+            ok_data({"id": "wa_1", "object": "whatsapp"}),
+        ]
+    )
+    try:
+        client.whatsapp.send({"to": "+254700000000", "text": "Hi"})
+        client.whatsapp.list(RequestOptions(query={"extra": "1"}), limit=10, status="sent")
+        client.whatsapp.get("wa 1")
+        client.whatsapp.events("wa_1")
+        client.whatsapp.cancel("wa_1")
+        client.whatsapp.requeue("wa_1")
+    finally:
+        http.close()
+
+    assert client.whatsapp_from is None
+    assert json.loads(calls[0].content) == {"to": "+254700000000", "text": "Hi"}
+    assert dict(calls[1].url.params) == {"extra": "1", "limit": "10", "status": "sent"}
+    assert calls[2].url.path == "/api/v1/whatsapp/wa 1"
+    assert calls[3].url.path == "/api/v1/whatsapp/wa_1/events"
+    assert calls[4].method == "POST" and calls[4].url.path == "/api/v1/whatsapp/wa_1/cancel"
+    assert calls[5].url.path == "/api/v1/whatsapp/wa_1/requeue"
+
+
+def test_whatsapp_senders_crud():
+    client, calls, http = make_sync(
+        [
+            ok_data({"data": [{"id": "wsnd_1"}]}),
+            ok_data({"id": "wsnd_1", "object": "whatsapp_sender"}, status=201),
+            ok_data({"id": "wsnd_1", "verified_name": "Acme Inc"}),
+            ok_data({"id": "wsnd_1", "object": "whatsapp_sender"}),
+            ok_data({"object": "whatsapp_sender", "id": "wsnd_1", "deleted": True}),
+        ]
+    )
+    try:
+        client.whatsapp_senders.list()
+        client.whatsapp_senders.create(
+            {
+                "phoneNumberId": "109876543210",
+                "wabaId": "220011223344",
+                "accessToken": "EAAG...secret",
+                "displayName": "Acme Support",
+                "identifier": "+254711000000",
+                "isDefault": True,
+            }
+        )
+        assert client.whatsappSenders.get("wsnd_1")["verified_name"] == "Acme Inc"
+        client.whatsapp_senders.set_default("wsnd_1")
+        client.whatsapp_senders.remove("wsnd_1")
+    finally:
+        http.close()
+
+    assert calls[0].method == "GET" and calls[0].url.path == "/api/v1/whatsapp/senders"
+    assert calls[1].method == "POST" and calls[1].url.path == "/api/v1/whatsapp/senders"
+    assert json.loads(calls[1].content) == {
+        "phone_number_id": "109876543210",
+        "waba_id": "220011223344",
+        "access_token": "EAAG...secret",
+        "display_name": "Acme Support",
+        "identifier": "+254711000000",
+        "is_default": True,
+    }
+    assert calls[2].url.path == "/api/v1/whatsapp/senders/wsnd_1"
+    assert calls[3].method == "POST"
+    assert calls[3].url.path == "/api/v1/whatsapp/senders/wsnd_1/default"
+    assert calls[4].method == "DELETE"
+    assert calls[4].url.path == "/api/v1/whatsapp/senders/wsnd_1"
+
+
+# --------------------------------------------------------------------------- #
+# SMS sender-ID provisioning
+# --------------------------------------------------------------------------- #
+
+
+def test_senders_provisioning_flow_and_aliases():
+    client, calls, http = make_sync(
+        [
+            ok_data({"fee_kes": 8400}),
+            ok_data({"data": []}),
+            ok_data({"id": "sir_1", "object": "sender_request"}, status=201),
+            ok_data({"id": "sir_1"}),
+            ok_data({"id": "sir_1", "object": "sender_request"}),
+            ok_data({"payment_id": "pay_1", "status": "pending", "customer_message": "Enter PIN"}),
+            ok_data("PDFBYTES"),
+        ]
+    )
+    try:
+        client.senders.options()
+        client.senders.list()
+        client.senders.create(
+            {
+                "requestedId": "ACME",
+                "entityType": "limited_company",
+                "networks": ["safaricom", "airtel"],
+            }
+        )
+        client.senders.get("sir 1")
+        client.senders.upload_kyc(
+            "sir_1",
+            {
+                "documents": [
+                    {
+                        "slug": "cert",
+                        "filename": "cert.pdf",
+                        "contentBase64": "AAAA",
+                        "contentType": "application/pdf",
+                    },
+                    "passthrough",
+                ],
+                "authLetter": {"filename": "auth.pdf", "contentBase64": "BBBB"},
+            },
+        )
+        client.senders.pay("sir_1", {"phone": "+254700000000"})
+        assert client.senders.authorization_letter() == "PDFBYTES"
+    finally:
+        http.close()
+
+    assert calls[0].url.path == "/api/v1/sms/senders/options"
+    assert calls[1].url.path == "/api/v1/sms/senders"
+    assert calls[2].method == "POST"
+    assert json.loads(calls[2].content) == {
+        "requested_id": "ACME",
+        "entity_type": "limited_company",
+        "networks": ["safaricom", "airtel"],
+    }
+    assert calls[3].url.path == "/api/v1/sms/senders/sir 1"
+    assert calls[4].method == "POST" and calls[4].url.path == "/api/v1/sms/senders/sir_1/kyc"
+    assert json.loads(calls[4].content) == {
+        "documents": [
+            {
+                "slug": "cert",
+                "filename": "cert.pdf",
+                "content_base64": "AAAA",
+                "content_type": "application/pdf",
+            },
+            "passthrough",
+        ],
+        "auth_letter": {"filename": "auth.pdf", "content_base64": "BBBB"},
+    }
+    assert calls[5].method == "POST" and calls[5].url.path == "/api/v1/sms/senders/sir_1/pay"
+    assert json.loads(calls[5].content) == {"phone": "+254700000000"}
+    assert calls[6].url.path == "/api/v1/sms/authorization-letter"
+
+
+# --------------------------------------------------------------------------- #
+# Billing
+# --------------------------------------------------------------------------- #
+
+
+def test_billing_query_merge_and_checkout_normalization():
+    client, calls, http = make_sync(
+        [
+            ok_data({"remaining": 4200, "unlimited": False, "active_packs": 2}),
+            ok_data({"data": [{"code": "pro_monthly", "name": "Pro"}]}),
+            ok_data({"payment_id": "pay_1", "status": "pending", "customer_message": "Enter PIN"}),
+            ok_data({"data": [{"id": "pay_1", "status": "completed"}]}),
+            ok_data({"id": "pay_1", "status": "completed"}),
+            ok_data({"data": [{"id": "pur_1", "kind": "credit_pack"}]}),
+        ]
+    )
+    try:
+        client.billing.credits(channel="sms")
+        client.billing.products()
+        client.billing.checkout(
+            {"productCode": "pro_monthly", "phone": "+254700000000", "method": "mpesa"}
+        )
+        client.billing.payments(limit=5)
+        client.billing.payment("pay_1")
+        client.billing.purchases()
+    finally:
+        http.close()
+
+    assert calls[0].url.path == "/api/v1/billing/credits"
+    assert dict(calls[0].url.params) == {"channel": "sms"}
+    assert calls[1].url.path == "/api/v1/billing/products"
+    assert calls[2].method == "POST" and calls[2].url.path == "/api/v1/billing/checkout"
+    assert json.loads(calls[2].content) == {
+        "product_code": "pro_monthly",
+        "phone": "+254700000000",
+        "method": "mpesa",
+    }
+    assert calls[3].url.path == "/api/v1/billing/payments"
+    assert dict(calls[3].url.params) == {"limit": "5"}
+    assert calls[4].url.path == "/api/v1/billing/payments/pay_1"
+    assert calls[5].url.path == "/api/v1/billing/purchases"
+
+
+# --------------------------------------------------------------------------- #
 # Domains / Templates / Webhooks / Suppressions / Attachments
 # --------------------------------------------------------------------------- #
 
